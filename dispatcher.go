@@ -5,46 +5,54 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/google/uuid"
-
-	"github.com/alexsniffin/gopd/internal/pq"
-	"github.com/alexsniffin/gopd/internal/worker"
 )
 
-type ScheduledMessage struct {
-	At      time.Time
-	Message interface{}
-}
-
 type Dispatcher struct {
-	pq              pq.PriorityQueue
+	pq              priorityQueue
+	maxMessages     int
 	parallelization int
 
-	egress   chan interface{}
-	ingest   chan ScheduledMessage
-	shutdown chan error
-	done     chan context.Context
+	idleWorkers   []Worker
+	activeWorkers map[uuid.UUID]Worker
+
+	egress    chan interface{}
+	ingest    chan ScheduledMessage
+	processed chan uuid.UUID
+	shutdown  chan error
+	done      chan context.Context
 }
 
-func NewDispatcher(parallelization, ingestBufferSize, egressBufferSize int) *Dispatcher {
-	queue := make(pq.PriorityQueue, 0)
+func NewDispatcher(config DispatcherConfig) *Dispatcher {
+	queue := make(priorityQueue, 0)
 	heap.Init(&queue)
 
 	return &Dispatcher{
 		pq:              queue,
-		parallelization: parallelization,
+		maxMessages:     config.MaxMessages,
+		parallelization: config.Parallelization,
 
-		egress:   make(chan interface{}, egressBufferSize),
-		ingest:   make(chan ScheduledMessage, ingestBufferSize),
-		shutdown: make(chan error),
-		done:     make(chan context.Context),
+		activeWorkers: make(map[uuid.UUID]Worker),
+
+		egress:    make(chan interface{}, config.EgressBufferSize),
+		ingest:    make(chan ScheduledMessage, config.IngestBufferSize),
+		processed: make(chan uuid.UUID),
+		shutdown:  make(chan error),
+		done:      make(chan context.Context),
 	}
 }
 
 func (d *Dispatcher) Start() {
-	go d.scheduler()
+	for i := 0; i < d.parallelization; i++ {
+		workerProcessor := NewWorker(uuid.New(), d.processed, d.egress)
+		d.idleWorkers = append(d.idleWorkers, workerProcessor)
+
+		go workerProcessor.Process()
+	}
+
+	go d.ingestProcess()
+	go d.completedProcess()
 }
 
 func (d *Dispatcher) Shutdown(ctx context.Context) error {
@@ -72,18 +80,52 @@ func (d *Dispatcher) DispatchChannel() <-chan interface{} {
 	return d.egress
 }
 
-func (d *Dispatcher) scheduler() {
-	processed := make(chan uuid.UUID)
-	idleWorkers := make([]worker.Processor, d.parallelization)
-	activeWorkers := make(map[uuid.UUID]worker.Processor)
+func (d *Dispatcher) ingestProcess() {
+	var lowestActiveWorker Worker
 
-	for i := 0; i < d.parallelization; i++ {
-		workerProcessor := worker.NewProcessor(uuid.New(), processed, d.egress)
-		idleWorkers = append(idleWorkers, workerProcessor)
+	for {
+		if d.pq.Len() >= d.maxMessages {
+			continue
+		}
 
-		go workerProcessor.Process()
+		select {
+		case ctx, ok := <-d.done:
+			if !ok {
+				select {
+				case <-ctx.Done():
+					if len(d.ingest) > 0 {
+						d.shutdown <- errors.New("failed to drain ingest channel within deadline")
+					}
+					if d.pq.Len() > 0 {
+						d.shutdown <- errors.New("failed to drain scheduled messages within deadline")
+					}
+
+					close(d.shutdown)
+					return
+				}
+			}
+		case msg := <-d.ingest:
+			if len(d.idleWorkers) > 0 {
+				workerProcessor := d.idleWorkers[0]
+				d.idleWorkers = d.idleWorkers[1:]
+				d.activeWorkers[workerProcessor.Id] = workerProcessor
+
+				workerProcessor.IngestChannel() <- msg
+
+				// set the lowest worker
+				if workerProcessor.CurrentMessage.At.After(lowestActiveWorker.CurrentMessage.At) {
+					lowestActiveWorker = workerProcessor
+				}
+			} else if msg.At.Before(lowestActiveWorker.CurrentMessage.At) {
+				lowestActiveWorker.IngestChannel() <- msg
+			} else {
+				heap.Push(&d.pq, msg)
+			}
+		}
 	}
+}
 
+func (d *Dispatcher) completedProcess() {
 	for {
 		select {
 		case ctx, ok := <-d.done:
@@ -101,25 +143,19 @@ func (d *Dispatcher) scheduler() {
 					return
 				}
 			}
-		case workerId := <-processed:
-			workerProcessor := activeWorkers[workerId]
+		case workerId := <-d.processed:
+			workerProcessor := d.activeWorkers[workerId]
 
 			if d.pq.Len() > 0 {
-				msg := d.pq.Pop().(ScheduledMessage)
+				msg, ok := heap.Pop(&d.pq).(ScheduledMessage)
+				if !ok {
+					// todo
+				}
 				workerProcessor.IngestChannel() <- msg
 			} else {
-				delete(activeWorkers, workerId)
-				idleWorkers = append(idleWorkers, workerProcessor)
+				delete(d.activeWorkers, workerId)
+				d.idleWorkers = append(d.idleWorkers, workerProcessor)
 			}
-		case msg := <-d.ingest:
-			if len(idleWorkers) > 0 {
-				workerProcessor := idleWorkers[0]
-				idleWorkers = idleWorkers[1:]
-				activeWorkers[workerProcessor.Id] = workerProcessor
-
-				workerProcessor.IngestChannel() <- msg
-			}
-			// todo swap lowest active worker and add to queue
 		}
 	}
 }
