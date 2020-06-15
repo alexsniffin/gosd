@@ -7,14 +7,20 @@ func (pq priorityQueue) Len() int {
 }
 
 func (pq priorityQueue) Less(i, j int) bool {
-	comp := pq[i].Message.At.Before(pq[j].Message.At)
-	return comp
+	if pq[i] == nil || pq[j] == nil {
+		return true
+	}
+	return pq[i].Message.At.Before(pq[j].Message.At)
 }
 
 func (pq priorityQueue) Swap(i, j int) {
 	pq[i], pq[j] = pq[j], pq[i]
-	pq[i].Index = i
-	pq[j].Index = j
+	if pq[i] != nil {
+		pq[i].Index = i
+	}
+	if pq[j] != nil {
+		pq[j].Index = j
+	}
 }
 
 func (pq *priorityQueue) Push(x interface{}) {
@@ -30,8 +36,11 @@ func (pq *priorityQueue) Pop() interface{} {
 	old := *pq
 	n := len(old)
 	item := old[n-1]
-	old[n-1] = nil  // avoid memory leak
-	item.Index = -1 // for safety
-	*pq = old[0 : n-1]
-	return item.Message
+	old[n-1] = nil // avoid memory leak
+	if item != nil {
+		item.Index = -1 // for safety
+		*pq = old[0 : n-1]
+		return item.Message
+	}
+	return nil
 }

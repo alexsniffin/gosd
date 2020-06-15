@@ -1,7 +1,6 @@
 package gopd
 
 import (
-	"container/heap"
 	"context"
 	"errors"
 	"fmt"
@@ -10,54 +9,52 @@ import (
 )
 
 type Dispatcher struct {
-	pq              priorityQueue
-	maxMessages     int
-	parallelization int
+	syncPq            SynchronousHeap
+	maxMessages       int
+	parallelization   int
+	sleepWorkersCount int
 
-	idleWorkers   []Worker
-	activeWorkers map[uuid.UUID]Worker
+	lowestActiveWorker *Worker
 
-	egress    chan interface{}
-	ingest    chan ScheduledMessage
-	processed chan uuid.UUID
-	shutdown  chan error
-	done      chan context.Context
+	requeue     chan ScheduledMessage
+	idleWorkers chan *Worker
+	egress      chan interface{}
+	ingress     chan ScheduledMessage
+	processed   chan uuid.UUID
+	shutdown    chan error
+	done        chan context.Context
 }
 
 func NewDispatcher(config DispatcherConfig) *Dispatcher {
-	queue := make(priorityQueue, 0)
-	heap.Init(&queue)
-
 	return &Dispatcher{
-		pq:              queue,
-		maxMessages:     config.MaxMessages,
-		parallelization: config.Parallelization,
+		syncPq:            NewSynchronousHeap(make(priorityQueue, 0)),
+		maxMessages:       config.MaxMessages,
+		parallelization:   config.Parallelization,
+		sleepWorkersCount: config.SleepWorkersCount,
 
-		activeWorkers: make(map[uuid.UUID]Worker),
-
-		egress:    make(chan interface{}, config.EgressBufferSize),
-		ingest:    make(chan ScheduledMessage, config.IngestBufferSize),
-		processed: make(chan uuid.UUID),
-		shutdown:  make(chan error),
-		done:      make(chan context.Context),
+		requeue:     make(chan ScheduledMessage),
+		idleWorkers: make(chan *Worker, config.SleepWorkersCount),
+		egress:      make(chan interface{}, config.EgressBufferSize),
+		ingress:     make(chan ScheduledMessage, config.IngressBufferSize),
+		shutdown:    make(chan error),
+		done:        make(chan context.Context),
 	}
 }
 
 func (d *Dispatcher) Start() {
-	for i := 0; i < d.parallelization; i++ {
-		workerProcessor := NewWorker(uuid.New(), d.processed, d.egress)
-		d.idleWorkers = append(d.idleWorkers, workerProcessor)
+	for i := 0; i < d.sleepWorkersCount; i++ {
+		workerProcessor := NewWorker(uuid.New(), d.egress, d.requeue, d.idleWorkers)
+		d.idleWorkers <- &workerProcessor
 
 		go workerProcessor.Process()
 	}
 
-	go d.ingestProcess()
-	go d.completedProcess()
+	go d.process()
 }
 
 func (d *Dispatcher) Shutdown(ctx context.Context) error {
 	d.done <- ctx
-	close(d.ingest)
+	close(d.ingress)
 
 	var err error
 	for {
@@ -72,19 +69,28 @@ func (d *Dispatcher) Shutdown(ctx context.Context) error {
 	}
 }
 
-func (d *Dispatcher) IngestChannel() chan<- ScheduledMessage {
-	return d.ingest
+func (d *Dispatcher) IngressChannel() chan<- ScheduledMessage {
+	return d.ingress
 }
 
 func (d *Dispatcher) DispatchChannel() <-chan interface{} {
 	return d.egress
 }
 
-func (d *Dispatcher) ingestProcess() {
-	var lowestActiveWorker Worker
-
+func (d *Dispatcher) process() {
 	for {
-		if d.pq.Len() >= d.maxMessages {
+		if len(d.idleWorkers) > 0 && d.syncPq.Len() > 0 {
+			worker := <-d.idleWorkers
+
+			msg, ok := d.syncPq.Pop().(ScheduledMessage)
+			if !ok {
+				// todo
+			}
+
+			worker.IngestChannel() <- msg
+		}
+
+		if d.syncPq.Len() >= d.maxMessages {
 			continue
 		}
 
@@ -93,10 +99,10 @@ func (d *Dispatcher) ingestProcess() {
 			if !ok {
 				select {
 				case <-ctx.Done():
-					if len(d.ingest) > 0 {
-						d.shutdown <- errors.New("failed to drain ingest channel within deadline")
+					if len(d.ingress) > 0 {
+						d.shutdown <- errors.New("failed to drain ingress channel within deadline")
 					}
-					if d.pq.Len() > 0 {
+					if d.syncPq.Len() > 0 {
 						d.shutdown <- errors.New("failed to drain scheduled messages within deadline")
 					}
 
@@ -104,57 +110,22 @@ func (d *Dispatcher) ingestProcess() {
 					return
 				}
 			}
-		case msg := <-d.ingest:
-			if len(d.idleWorkers) > 0 {
-				workerProcessor := d.idleWorkers[0]
-				d.idleWorkers = d.idleWorkers[1:]
-				d.activeWorkers[workerProcessor.Id] = workerProcessor
-
+		case msg := <-d.requeue:
+			d.syncPq.Push(msg)
+		case msg := <-d.ingress:
+			if d.lowestActiveWorker == nil && len(d.idleWorkers) > 0 {
+				workerProcessor := <-d.idleWorkers
+				d.lowestActiveWorker = workerProcessor
 				workerProcessor.IngestChannel() <- msg
-
-				// set the lowest worker
-				if workerProcessor.CurrentMessage.At.After(lowestActiveWorker.CurrentMessage.At) {
-					lowestActiveWorker = workerProcessor
-				}
-			} else if msg.At.Before(lowestActiveWorker.CurrentMessage.At) {
-				lowestActiveWorker.IngestChannel() <- msg
+			} else if d.lowestActiveWorker != nil && msg.At.Before(d.lowestActiveWorker.CurrentMessage.At) {
+				d.lowestActiveWorker.IngestChannel() <- msg
 			} else {
-				heap.Push(&d.pq, msg)
-			}
-		}
-	}
-}
-
-func (d *Dispatcher) completedProcess() {
-	for {
-		select {
-		case ctx, ok := <-d.done:
-			if !ok {
-				select {
-				case <-ctx.Done():
-					if len(d.ingest) > 0 {
-						d.shutdown <- errors.New("failed to drain ingest channel within deadline")
-					}
-					if d.pq.Len() > 0 {
-						d.shutdown <- errors.New("failed to drain scheduled messages within deadline")
-					}
-
-					close(d.shutdown)
-					return
+				if len(d.idleWorkers) > 0 {
+					workerProcessor := <-d.idleWorkers
+					workerProcessor.IngestChannel() <- msg
+				} else {
+					d.syncPq.Push(msg)
 				}
-			}
-		case workerId := <-d.processed:
-			workerProcessor := d.activeWorkers[workerId]
-
-			if d.pq.Len() > 0 {
-				msg, ok := heap.Pop(&d.pq).(ScheduledMessage)
-				if !ok {
-					// todo
-				}
-				workerProcessor.IngestChannel() <- msg
-			} else {
-				delete(d.activeWorkers, workerId)
-				d.idleWorkers = append(d.idleWorkers, workerProcessor)
 			}
 		}
 	}

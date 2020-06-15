@@ -11,20 +11,22 @@ type Worker struct {
 	Id             uuid.UUID
 	CurrentMessage ScheduledMessage
 
-	egress    chan<- interface{}
-	ingest    chan ScheduledMessage
-	processed chan<- uuid.UUID
-	done      chan context.Context
+	requeue     chan<- ScheduledMessage
+	idleWorkers chan<- *Worker
+	egress      chan<- interface{}
+	ingest      chan ScheduledMessage
+	done        chan context.Context
 }
 
-func NewWorker(id uuid.UUID, processed chan<- uuid.UUID, egress chan<- interface{}) Worker {
+func NewWorker(id uuid.UUID, egress chan<- interface{}, requeue chan<- ScheduledMessage, idleWorkers chan<- *Worker) Worker {
 	return Worker{
 		Id: id,
 
-		egress:    egress,
-		ingest:    make(chan ScheduledMessage),
-		processed: processed,
-		done:      make(chan context.Context),
+		requeue:     requeue,
+		idleWorkers: idleWorkers,
+		egress:      egress,
+		ingest:      make(chan ScheduledMessage),
+		done:        make(chan context.Context),
 	}
 }
 
@@ -46,6 +48,7 @@ func (w *Worker) Process() {
 		case msg := <-w.ingest:
 			if curTimer != nil {
 				curTimer.Stop()
+				w.requeue <- w.CurrentMessage
 			}
 
 			duration := msg.At.Sub(time.Now())
@@ -57,7 +60,7 @@ func (w *Worker) Process() {
 				w.egress <- w.CurrentMessage
 				curTimer.Stop()
 				curTimer = nil
-				w.processed <- w.Id
+				w.idleWorkers <- w
 			}
 		}
 	}

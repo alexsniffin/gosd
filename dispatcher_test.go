@@ -2,18 +2,20 @@ package gopd
 
 import (
 	"fmt"
+	"math/rand"
 	"testing"
 	"time"
 )
 
 func TestDispatcher_Integration(t *testing.T) {
 	dispatcher := NewDispatcher(DispatcherConfig{
-		Parallelization:  5,
-		IngestBufferSize: 1,
-		EgressBufferSize: 10,
-		MaxMessages:      10,
+		Parallelization:   1,
+		SleepWorkersCount: 1,
+		IngressBufferSize: 100000,
+		EgressBufferSize:  100000,
+		MaxMessages:       10000,
 	})
-	ingest := dispatcher.IngestChannel()
+	ingest := dispatcher.IngressChannel()
 	dispatch := dispatcher.DispatchChannel()
 
 	dispatcher.Start()
@@ -27,8 +29,8 @@ func TestDispatcher_Integration(t *testing.T) {
 		}
 	}()
 
-	for i := 0; i < 100; i++ {
-		timeAt := time.Duration(i*2) * time.Second
+	for i := 0; i < 100000; i++ {
+		timeAt := time.Duration(rand.Intn(1)+rand.Intn(3)) * time.Second
 		ingest <- ScheduledMessage{
 			At:      time.Now().Add(timeAt),
 			Message: i,
