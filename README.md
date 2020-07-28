@@ -1,7 +1,7 @@
-# go-schedulable-dispatcher
-[![Go Report Card](https://goreportcard.com/badge/github.com/alexsniffin/go-schedulable-dispatcher)](https://goreportcard.com/report/github.com/alexsniffin/go-schedulable-dispatcher)
+# gosd
+[![Go Report Card](https://goreportcard.com/badge/github.com/alexsniffin/gosd)](https://goreportcard.com/report/github.com/alexsniffin/gosd)
 
-A library for scheduling when to dispatch a message to a channel.
+go-schedulable-dispatcher (gosd), is a library for scheduling when to dispatch a message to a channel.
 
 ## Implementation
 The implementation provides an ease-of-use API with both an ingress (ingest) channel and egress (disptach) channel. Messages are ingested and processed into a heap based priority queue for dispatching. At most two separate goroutines are used, one for processing of messages from the ingest channel and heap and the other as a timer. Order is not guaranteed by default, but can be changed through the config. By not guaranteeing order, performance was tested to be around 20x that of ordered. If strict-ordering isn't critical to your application, it's recommended to keep the default setting.
