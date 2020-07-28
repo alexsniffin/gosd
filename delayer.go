@@ -13,8 +13,8 @@ type delayer interface {
 type delayState int
 
 const (
-	Idle delayState = iota
-	Waiting
+	idle delayState = iota
+	waiting
 )
 
 type delay struct {
@@ -37,14 +37,14 @@ func newDelay(respondIdleState bool, egressChannel chan<- interface{}, idleChann
 
 // stop sends a cancel signal to the current timer process
 func (d *delay) stop(drain bool) {
-	if d.state == Waiting {
+	if d.state == waiting {
 		d.cancelChannel <- drain
 	}
 }
 
 // wait will create a timer based on the time from `msg.At` and dispatch the message to the egress channel asynchronously
 func (d *delay) wait(msg *ScheduledMessage) {
-	d.state = Waiting
+	d.state = waiting
 	curTimer := time.NewTimer(msg.At.Sub(time.Now()))
 
 	go func() {
@@ -56,7 +56,7 @@ func (d *delay) wait(msg *ScheduledMessage) {
 					if drain {
 						d.egressChannel <- msg.Message
 					}
-					d.state = Idle
+					d.state = idle
 					if d.respondIdleState {
 						d.idleChannel <- true
 					}
@@ -64,7 +64,7 @@ func (d *delay) wait(msg *ScheduledMessage) {
 				return
 			case <-curTimer.C:
 				d.egressChannel <- msg.Message
-				d.state = Idle
+				d.state = idle
 				if d.respondIdleState {
 					d.idleChannel <- true
 				}
@@ -76,5 +76,5 @@ func (d *delay) wait(msg *ScheduledMessage) {
 
 // available returns whether the delay is able to accept a new message to wait on
 func (d *delay) available() bool {
-	return d.state == Idle
+	return d.state == idle
 }

@@ -10,10 +10,10 @@ import (
 type dispatcherState int
 
 const (
-	Paused dispatcherState = iota
-	Processing
-	Shutdown
-	ShutdownAndDrain
+	paused dispatcherState = iota
+	processing
+	shutdown
+	shutdownAndDrain
 )
 
 // Dispatcher processes the ingress and dispatching of scheduled messages
@@ -67,15 +67,15 @@ func NewDispatcher(config *DispatcherConfig) (*Dispatcher, error) {
 // can be lost if new messages are still being ingested
 func (d *Dispatcher) Shutdown(ctx context.Context, drainImmediately bool) error {
 	// if paused, resume the process in order to drain messages
-	if d.state == Paused {
+	if d.state == paused {
 		d.delayer.wait(d.nextMessage)
 		go d.process()
 	}
 
 	if drainImmediately {
-		d.state = ShutdownAndDrain
+		d.state = shutdownAndDrain
 	} else {
-		d.state = Shutdown
+		d.state = shutdown
 	}
 
 	// block new messages and let the channel drain
@@ -101,26 +101,26 @@ func (d *Dispatcher) Shutdown(ctx context.Context, drainImmediately bool) error 
 
 // Start initializes the processing of scheduled messages and blocks
 func (d *Dispatcher) Start() error {
-	if d.state == Shutdown || d.state == ShutdownAndDrain {
+	if d.state == shutdown || d.state == shutdownAndDrain {
 		return errors.New("dispatcher is already running and shutting down")
-	} else if d.state == Processing {
+	} else if d.state == processing {
 		return errors.New("dispatcher is already running")
 	}
 
-	d.state = Processing
+	d.state = processing
 	d.process()
 	return nil
 }
 
 // Pause updates the state of the Dispatcher to stop processing messages and will close the main process loop
 func (d *Dispatcher) Pause() error {
-	if d.state == Shutdown || d.state == ShutdownAndDrain {
+	if d.state == shutdown || d.state == shutdownAndDrain {
 		return errors.New("dispatcher is shutting down and cannot be paused")
-	} else if d.state == Paused {
+	} else if d.state == paused {
 		return errors.New("dispatcher is already paused")
 	}
 
-	d.state = Paused
+	d.state = paused
 	d.stopProcess <- true
 	d.delayer.stop(false)
 	return nil
@@ -129,13 +129,13 @@ func (d *Dispatcher) Pause() error {
 // Resume updates the state of the Dispatcher to start processing messages and starts the timer for the last message
 // being processed and blocks
 func (d *Dispatcher) Resume() error {
-	if d.state == Shutdown || d.state == ShutdownAndDrain {
+	if d.state == shutdown || d.state == shutdownAndDrain {
 		return errors.New("dispatcher is shutting down")
-	} else if d.state == Processing {
+	} else if d.state == processing {
 		return errors.New("dispatcher is already running")
 	}
 
-	d.state = Processing
+	d.state = processing
 	if d.nextMessage != nil {
 		d.delayer.wait(d.nextMessage)
 	}
@@ -151,7 +151,7 @@ func (d *Dispatcher) process() {
 			return
 		default:
 			// drain the heap
-			if d.state == ShutdownAndDrain {
+			if d.state == shutdownAndDrain {
 				d.delayer.stop(true)
 				if !d.guaranteeOrder && len(d.delayerIdleChannel) > 0 {
 					<-d.delayerIdleChannel
@@ -182,7 +182,7 @@ func (d *Dispatcher) process() {
 
 			if len(d.ingressChannel) > 0 {
 				if msg, ok := <-d.ingressChannel; ok {
-					if d.state == ShutdownAndDrain {
+					if d.state == shutdownAndDrain {
 						// dispatch the new message immediately
 						d.dispatchChannel <- msg.Message
 					} else if d.nextMessage != nil && msg.At.Before(d.nextMessage.At) {

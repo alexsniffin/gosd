@@ -16,8 +16,8 @@ func Test_delay_stop(t *testing.T) {
 		fields       fields
 		cancelLength int
 	}{
-		{"waiting", fields{state: Waiting, cancelChannel: make(chan bool, 1)}, 1},
-		{"idle", fields{state: Idle, cancelChannel: make(chan bool, 1)}, 0},
+		{"waiting", fields{state: waiting, cancelChannel: make(chan bool, 1)}, 1},
+		{"idle", fields{state: idle, cancelChannel: make(chan bool, 1)}, 0},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -55,7 +55,7 @@ func Test_delay_wait(t *testing.T) {
 			respondIdleState: false,
 			egressChannel:    make(chan interface{}),
 			idleChannel:      make(chan bool)}, args{msg: &ScheduledMessage{At: time.Now()}}, func(f fields, d *delay) {
-			if d.state != Waiting {
+			if d.state != waiting {
 				t.Errorf("wait() unexpected state = %+v, want Waiting", d.state)
 			}
 			if _, ok := <-f.egressChannel; !ok {
@@ -66,7 +66,7 @@ func Test_delay_wait(t *testing.T) {
 			respondIdleState: true,
 			egressChannel:    make(chan interface{}),
 			idleChannel:      make(chan bool)}, args{msg: &ScheduledMessage{At: time.Now()}}, func(f fields, d *delay) {
-			if d.state != Waiting {
+			if d.state != waiting {
 				t.Errorf("wait() unexpected state = %+v, want Waiting", d.state)
 			}
 			if _, ok := <-f.egressChannel; !ok {
@@ -75,7 +75,7 @@ func Test_delay_wait(t *testing.T) {
 			if _, ok := <-f.idleChannel; !ok {
 				t.Errorf("wait() egress channel closed unexpected")
 			}
-			if d.state != Idle {
+			if d.state != idle {
 				t.Errorf("wait() unexpected state = %+v, want Idle", d.state)
 			}
 		}},
@@ -83,7 +83,7 @@ func Test_delay_wait(t *testing.T) {
 			respondIdleState: false,
 			cancelChannel:    make(chan bool, 1),
 			idleChannel:      make(chan bool)}, args{msg: &ScheduledMessage{At: time.Now()}}, func(f fields, d *delay) {
-			if d.state != Waiting {
+			if d.state != waiting {
 				t.Errorf("wait() unexpected state = %+v, want Idle", d.state)
 			}
 			d.cancelChannel <- true
@@ -92,14 +92,14 @@ func Test_delay_wait(t *testing.T) {
 			respondIdleState: true,
 			cancelChannel:    make(chan bool, 1),
 			idleChannel:      make(chan bool)}, args{msg: &ScheduledMessage{At: time.Now().Add(10 + time.Second)}}, func(f fields, d *delay) {
-			if d.state != Waiting {
+			if d.state != waiting {
 				t.Errorf("wait() unexpected state = %+v, want Waiting", d.state)
 			}
 			d.cancelChannel <- false
 			if _, ok := <-f.idleChannel; !ok {
 				t.Errorf("wait() egress channel closed unexpected")
 			}
-			if d.state != Idle {
+			if d.state != idle {
 				t.Errorf("wait() unexpected state = %+v, want Idle", d.state)
 			}
 		}},
@@ -130,8 +130,8 @@ func Test_delay_available(t *testing.T) {
 		fields fields
 		want   bool
 	}{
-		{"availableIdle", fields{state: Idle}, true},
-		{"availableIdle", fields{state: Waiting}, false},
+		{"availableIdle", fields{state: idle}, true},
+		{"availableIdle", fields{state: waiting}, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

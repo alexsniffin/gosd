@@ -53,10 +53,10 @@ func TestDispatcher_Start(t *testing.T) {
 		wantState dispatcherState
 		wantErr   bool
 	}{
-		{"pausedState", fields{state: Paused, maxMessages: 1, stopProcess: make(chan bool)}, Processing, false},
-		{"processingState", fields{state: Processing}, Processing, true},
-		{"shutdownState", fields{state: Shutdown}, Shutdown, true},
-		{"shutdownAndDrainState", fields{state: ShutdownAndDrain}, ShutdownAndDrain, true},
+		{"pausedState", fields{state: paused, maxMessages: 1, stopProcess: make(chan bool)}, processing, false},
+		{"processingState", fields{state: processing}, processing, true},
+		{"shutdownState", fields{state: shutdown}, shutdown, true},
+		{"shutdownAndDrainState", fields{state: shutdownAndDrain}, shutdownAndDrain, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -105,10 +105,10 @@ func TestDispatcher_Pause(t *testing.T) {
 		wantState      dispatcherState
 		wantErr        bool
 	}{
-		{"processingState", fields{state: Processing, delayer: &fakeDelayer{stopCalled: make(chan bool, 1)}, stopProcess: make(chan bool, 1)}, 1, Paused, false},
-		{"pausedState", fields{state: Paused}, 0, Paused, true},
-		{"shutdownState", fields{state: Shutdown}, 0, Shutdown, true},
-		{"shutdownAndDrainState", fields{state: ShutdownAndDrain}, 0, ShutdownAndDrain, true},
+		{"processingState", fields{state: processing, delayer: &fakeDelayer{stopCalled: make(chan bool, 1)}, stopProcess: make(chan bool, 1)}, 1, paused, false},
+		{"pausedState", fields{state: paused}, 0, paused, true},
+		{"shutdownState", fields{state: shutdown}, 0, shutdown, true},
+		{"shutdownAndDrainState", fields{state: shutdownAndDrain}, 0, shutdownAndDrain, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -162,7 +162,7 @@ func TestDispatcher_Resume(t *testing.T) {
 		wantErr   bool
 	}{
 		{"pausedState", fields{
-			state: Paused,
+			state: paused,
 			pq: priorityQueue{
 				items:         make([]*item, 0),
 				maintainOrder: false,
@@ -171,19 +171,19 @@ func TestDispatcher_Resume(t *testing.T) {
 			nextMessage: &ScheduledMessage{},
 			delayer:     &fakeDelayer{waitCalled: make(chan *ScheduledMessage, 1), availableResponse: false},
 			stopProcess: make(chan bool),
-		}, Processing, false},
+		}, processing, false},
 		{"pausedStateNilNextMessage", fields{
-			state: Paused,
+			state: paused,
 			pq: priorityQueue{
 				items:         make([]*item, 0),
 				maintainOrder: false,
 			},
 			maxMessages: 1,
 			stopProcess: make(chan bool),
-		}, Processing, false},
-		{"processingState", fields{state: Processing}, Processing, true},
-		{"shutdownState", fields{state: Shutdown}, Shutdown, true},
-		{"shutdownAndDrainState", fields{state: ShutdownAndDrain}, ShutdownAndDrain, true},
+		}, processing, false},
+		{"processingState", fields{state: processing}, processing, true},
+		{"shutdownState", fields{state: shutdown}, shutdown, true},
+		{"shutdownAndDrainState", fields{state: shutdownAndDrain}, shutdownAndDrain, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -239,7 +239,7 @@ func TestDispatcher_process(t *testing.T) {
 	}{
 		{"pqMaxMessageSize", fields{
 			guaranteeOrder: false,
-			state:          Processing,
+			state:          processing,
 			delayer: &fakeDelayer{
 				availableResponse: true,
 				availableCalled:   make(chan bool),
@@ -272,7 +272,7 @@ func TestDispatcher_process(t *testing.T) {
 			}},
 		{"shutdownAndDrain", fields{
 			guaranteeOrder: false,
-			state:          ShutdownAndDrain,
+			state:          shutdownAndDrain,
 			delayer: &fakeDelayer{
 				availableResponse: true,
 				availableCalled:   make(chan bool),
@@ -304,7 +304,7 @@ func TestDispatcher_process(t *testing.T) {
 				}
 			}},
 		{"ingressChannelNextMessageNil", fields{
-			state: Processing,
+			state: processing,
 			delayer: &fakeDelayer{
 				waitCalled: make(chan *ScheduledMessage)},
 			pq: priorityQueue{
@@ -333,7 +333,7 @@ func TestDispatcher_process(t *testing.T) {
 				}
 			}},
 		{"ingressChannelPushHeap", fields{
-			state:   Processing,
+			state:   processing,
 			delayer: &fakeDelayer{},
 			pq: priorityQueue{
 				items:         make([]*item, 0),
@@ -358,7 +358,7 @@ func TestDispatcher_process(t *testing.T) {
 				}
 			}},
 		{"ingressChannelReplaceNextMessage", fields{
-			state:          Processing,
+			state:          processing,
 			guaranteeOrder: false,
 			delayer: &fakeDelayer{
 				waitCalled: make(chan *ScheduledMessage),
@@ -398,7 +398,7 @@ func TestDispatcher_process(t *testing.T) {
 				}
 			}},
 		{"ingressChannelShutdownAndDrain", fields{
-			state:   ShutdownAndDrain,
+			state:   shutdownAndDrain,
 			delayer: &fakeDelayer{},
 			pq: priorityQueue{
 				items:         make([]*item, 0),
@@ -423,7 +423,7 @@ func TestDispatcher_process(t *testing.T) {
 				}
 			}},
 		{"pqPop", fields{
-			state: Processing,
+			state: processing,
 			delayer: &fakeDelayer{
 				availableResponse: true,
 				availableCalled:   make(chan bool),
@@ -504,7 +504,7 @@ func TestDispatcher_Shutdown(t *testing.T) {
 		customAssertion func(*Dispatcher)
 	}{
 		{"shutdownWithinDeadline", fields{
-			state: Processing,
+			state: processing,
 			pq: priorityQueue{
 				items:         make([]*item, 0),
 				maintainOrder: false,
@@ -519,12 +519,12 @@ func TestDispatcher_Shutdown(t *testing.T) {
 			}(),
 			drainImmediately: false}, false,
 			func(d *Dispatcher) {
-				if d.state != Shutdown {
+				if d.state != shutdown {
 					t.Errorf("Shutdown() unexpect state = %v, want Shutdown", d.state)
 				}
 			}},
 		{"shutdownWithinDeadlineDrain", fields{
-			state: Processing,
+			state: processing,
 			pq: priorityQueue{
 				items:         make([]*item, 0),
 				maintainOrder: false,
@@ -539,12 +539,12 @@ func TestDispatcher_Shutdown(t *testing.T) {
 			}(),
 			drainImmediately: true}, false,
 			func(d *Dispatcher) {
-				if d.state != ShutdownAndDrain {
+				if d.state != shutdownAndDrain {
 					t.Errorf("Shutdown() unexpect state = %v, want Shutdown", d.state)
 				}
 			}},
 		{"shutdownNotWithinDeadline", fields{
-			state: Processing,
+			state: processing,
 			pq: priorityQueue{
 				items:         make([]*item, 0),
 				maintainOrder: false,
@@ -559,7 +559,7 @@ func TestDispatcher_Shutdown(t *testing.T) {
 			}(),
 			drainImmediately: false}, true,
 			func(d *Dispatcher) {
-				if d.state != Shutdown {
+				if d.state != shutdown {
 					t.Errorf("Shutdown() unexpect state = %v, want Shutdown", d.state)
 				}
 			}},
@@ -614,7 +614,7 @@ func TestDispatcher_integration_inOrderIngress(t *testing.T) {
 				if ok {
 					msgValue := msg.(int)
 					if msgValue != i {
-						t.Errorf("intergration; unexpected value from message = %d, want = %d", msgValue, i)
+						t.Errorf("integration; unexpected value from message = %d, want = %d", msgValue, i)
 						t.FailNow()
 					}
 					i++
@@ -639,7 +639,7 @@ func TestDispatcher_integration_inOrderIngress(t *testing.T) {
 	}
 
 	// block until started
-	for dispatcher.state != Processing {
+	for dispatcher.state != processing {
 	}
 
 	ctx, _ := context.WithTimeout(context.Background(), 3000*time.Millisecond)
@@ -672,7 +672,7 @@ func TestDispatcher_integration_outOfOrderIngress(t *testing.T) {
 				if ok {
 					msgValue := msg.(int)
 					if msgValue != i {
-						t.Errorf("intergration; unexpected value from message = %d, want = %d", msgValue, i)
+						t.Errorf("integration; unexpected value from message = %d, want = %d", msgValue, i)
 						t.FailNow()
 					}
 					i++
@@ -697,7 +697,7 @@ func TestDispatcher_integration_outOfOrderIngress(t *testing.T) {
 	}
 
 	// block until started
-	for dispatcher.state != Processing {
+	for dispatcher.state != processing {
 	}
 
 	ctx, _ := context.WithTimeout(context.Background(), 3000*time.Millisecond)
@@ -731,7 +731,7 @@ func TestDispatcher_integration_sameTimeSameOrder(t *testing.T) {
 					msgValue := msg.(int)
 					fmt.Println(msgValue)
 					if msgValue != i {
-						t.Errorf("intergration; unexpected value from message = %d, want = %d", msgValue, i)
+						t.Errorf("integration; unexpected value from message = %d, want = %d", msgValue, i)
 						t.FailNow()
 					}
 					i++
@@ -749,7 +749,7 @@ func TestDispatcher_integration_sameTimeSameOrder(t *testing.T) {
 	}
 
 	// block until started
-	for dispatcher.state != Processing {
+	for dispatcher.state != processing {
 	}
 
 	ctx, _ := context.WithTimeout(context.Background(), 3000*time.Millisecond)
@@ -767,7 +767,7 @@ func RunDispatchLoadTest(b *testing.B, totalMessages int, config DispatcherConfi
 	go dispatcher.Start()
 
 	// block until started
-	for dispatcher.state != Processing {
+	for dispatcher.state != processing {
 	}
 
 	ingestComplete := make(chan bool)
