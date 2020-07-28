@@ -1,3 +1,3 @@
-module github.com/alexsniffin/gopd
+module github.com/alexsniffin/gosd
 
-go 1.14
+go 1.15

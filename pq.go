@@ -1,4 +1,4 @@
-package gopd
+package gosd
 
 type item struct {
 	Message *ScheduledMessage

@@ -1,4 +1,4 @@
-package gopd
+package gosd
 
 import (
 	"time"

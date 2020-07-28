@@ -1,4 +1,4 @@
-package gopd
+package gosd
 
 import (
 	"context"
@@ -14,7 +14,7 @@ type fakeDelayer struct {
 	availableResponse bool
 }
 
-func (fd *fakeDelayer) stop() {
+func (fd *fakeDelayer) stop(drain bool) {
 	if fd.stopCalled != nil {
 		fd.stopCalled <- true
 	}
@@ -238,7 +238,8 @@ func TestDispatcher_process(t *testing.T) {
 		customAssertion func(*Dispatcher)
 	}{
 		{"pqMaxMessageSize", fields{
-			state: Processing,
+			guaranteeOrder: false,
+			state:          Processing,
 			delayer: &fakeDelayer{
 				availableResponse: true,
 				availableCalled:   make(chan bool),
@@ -270,8 +271,12 @@ func TestDispatcher_process(t *testing.T) {
 				}
 			}},
 		{"shutdownAndDrain", fields{
-			state:   ShutdownAndDrain,
-			delayer: &fakeDelayer{},
+			guaranteeOrder: false,
+			state:          ShutdownAndDrain,
+			delayer: &fakeDelayer{
+				availableResponse: true,
+				availableCalled:   make(chan bool),
+			},
 			pq: priorityQueue{
 				items: []*item{{&ScheduledMessage{}, 0}},
 			},
@@ -279,7 +284,12 @@ func TestDispatcher_process(t *testing.T) {
 			dispatchChannel: make(chan interface{}),
 			stopProcess:     make(chan bool)},
 			func(d *Dispatcher) {
-				if _, ok := d.delayer.(*fakeDelayer); ok {
+				if fd, ok := d.delayer.(*fakeDelayer); ok {
+					if _, ok := <-fd.availableCalled; !ok {
+						t.Error("process() expected close of delayer.available()")
+					}
+					fd.availableCalled = nil
+
 					if _, ok := <-d.dispatchChannel; !ok {
 						t.Error("process() message expected from dispatchChannel")
 					}
@@ -798,10 +808,10 @@ func RunDispatchLoadTest(b *testing.B, totalMessages int, config DispatcherConfi
 
 func Benchmark_integration_unordered(b *testing.B) {
 	for n := 0; n < b.N; n++ {
-		RunDispatchLoadTest(b, 100, DispatcherConfig{
-			IngressChannelSize:  100,
-			DispatchChannelSize: 100,
-			MaxMessages:         100,
+		RunDispatchLoadTest(b, 1000, DispatcherConfig{
+			IngressChannelSize:  1000,
+			DispatchChannelSize: 1000,
+			MaxMessages:         1000,
 			GuaranteeOrder:      false,
 		})
 	}
@@ -809,10 +819,10 @@ func Benchmark_integration_unordered(b *testing.B) {
 
 func Benchmark_integration_unorderedSmallBuffer(b *testing.B) {
 	for n := 0; n < b.N; n++ {
-		RunDispatchLoadTest(b, 100, DispatcherConfig{
+		RunDispatchLoadTest(b, 1000, DispatcherConfig{
 			IngressChannelSize:  1,
 			DispatchChannelSize: 1,
-			MaxMessages:         100,
+			MaxMessages:         1000,
 			GuaranteeOrder:      false,
 		})
 	}
@@ -820,9 +830,9 @@ func Benchmark_integration_unorderedSmallBuffer(b *testing.B) {
 
 func Benchmark_integration_unorderedSmallHeap(b *testing.B) {
 	for n := 0; n < b.N; n++ {
-		RunDispatchLoadTest(b, 100, DispatcherConfig{
-			IngressChannelSize:  100,
-			DispatchChannelSize: 100,
+		RunDispatchLoadTest(b, 1000, DispatcherConfig{
+			IngressChannelSize:  1000,
+			DispatchChannelSize: 1000,
 			MaxMessages:         10,
 			GuaranteeOrder:      false,
 		})
@@ -831,10 +841,10 @@ func Benchmark_integration_unorderedSmallHeap(b *testing.B) {
 
 func Benchmark_integration_ordered(b *testing.B) {
 	for n := 0; n < b.N; n++ {
-		RunDispatchLoadTest(b, 100, DispatcherConfig{
-			IngressChannelSize:  100,
-			DispatchChannelSize: 100,
-			MaxMessages:         100,
+		RunDispatchLoadTest(b, 1000, DispatcherConfig{
+			IngressChannelSize:  1000,
+			DispatchChannelSize: 1000,
+			MaxMessages:         1000,
 			GuaranteeOrder:      true,
 		})
 	}
@@ -842,10 +852,10 @@ func Benchmark_integration_ordered(b *testing.B) {
 
 func Benchmark_integration_orderedSmallBuffer(b *testing.B) {
 	for n := 0; n < b.N; n++ {
-		RunDispatchLoadTest(b, 100, DispatcherConfig{
+		RunDispatchLoadTest(b, 1000, DispatcherConfig{
 			IngressChannelSize:  1,
 			DispatchChannelSize: 1,
-			MaxMessages:         100,
+			MaxMessages:         1000,
 			GuaranteeOrder:      true,
 		})
 	}
@@ -853,9 +863,9 @@ func Benchmark_integration_orderedSmallBuffer(b *testing.B) {
 
 func Benchmark_integration_orderedSmallHeap(b *testing.B) {
 	for n := 0; n < b.N; n++ {
-		RunDispatchLoadTest(b, 100, DispatcherConfig{
-			IngressChannelSize:  100,
-			DispatchChannelSize: 100,
+		RunDispatchLoadTest(b, 1000, DispatcherConfig{
+			IngressChannelSize:  1000,
+			DispatchChannelSize: 1000,
 			MaxMessages:         10,
 			GuaranteeOrder:      true,
 		})

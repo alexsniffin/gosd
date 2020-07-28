@@ -1,4 +1,4 @@
-package gopd
+package gosd
 
 import (
 	"container/heap"
@@ -63,7 +63,8 @@ func NewDispatcher(config *DispatcherConfig) (*Dispatcher, error) {
 // Shutdown will attempt to shutdown the Dispatcher within the context deadline, otherwise terminating the process
 // ungracefully
 //
-// If drainImmediately is true, then all messages will be dispatched immediately regardless of the schedule set
+// If drainImmediately is true, then all messages will be dispatched immediately regardless of the schedule set. Order
+// can be lost if new messages are still being ingested
 func (d *Dispatcher) Shutdown(ctx context.Context, drainImmediately bool) error {
 	// if paused, resume the process in order to drain messages
 	if d.state == Paused {
@@ -98,7 +99,7 @@ func (d *Dispatcher) Shutdown(ctx context.Context, drainImmediately bool) error 
 	}
 }
 
-// Start initializes the processing of scheduled messages
+// Start initializes the processing of scheduled messages and blocks
 func (d *Dispatcher) Start() error {
 	if d.state == Shutdown || d.state == ShutdownAndDrain {
 		return errors.New("dispatcher is already running and shutting down")
@@ -111,7 +112,7 @@ func (d *Dispatcher) Start() error {
 	return nil
 }
 
-// Pause updates the state of the Dispatcher to stop processing messages
+// Pause updates the state of the Dispatcher to stop processing messages and will close the main process loop
 func (d *Dispatcher) Pause() error {
 	if d.state == Shutdown || d.state == ShutdownAndDrain {
 		return errors.New("dispatcher is shutting down and cannot be paused")
@@ -121,12 +122,12 @@ func (d *Dispatcher) Pause() error {
 
 	d.state = Paused
 	d.stopProcess <- true
-	d.delayer.stop()
+	d.delayer.stop(false)
 	return nil
 }
 
 // Resume updates the state of the Dispatcher to start processing messages and starts the timer for the last message
-// being processed
+// being processed and blocks
 func (d *Dispatcher) Resume() error {
 	if d.state == Shutdown || d.state == ShutdownAndDrain {
 		return errors.New("dispatcher is shutting down")
@@ -151,7 +152,13 @@ func (d *Dispatcher) process() {
 		default:
 			// drain the heap
 			if d.state == ShutdownAndDrain {
-				d.drainHeap()
+				d.delayer.stop(true)
+				if !d.guaranteeOrder && len(d.delayerIdleChannel) > 0 {
+					<-d.delayerIdleChannel
+					d.drainHeap()
+				} else if d.delayer.available() {
+					d.drainHeap()
+				}
 			}
 
 			// check if we've exceeded the maximum messages to store in the heap
@@ -177,11 +184,11 @@ func (d *Dispatcher) process() {
 				if msg, ok := <-d.ingressChannel; ok {
 					if d.state == ShutdownAndDrain {
 						// dispatch the new message immediately
-						d.dispatchChannel <- msg
+						d.dispatchChannel <- msg.Message
 					} else if d.nextMessage != nil && msg.At.Before(d.nextMessage.At) {
 						heap.Push(&d.pq, d.nextMessage)
 						d.nextMessage = msg
-						d.delayer.stop()
+						d.delayer.stop(false)
 						if !d.guaranteeOrder {
 							<-d.delayerIdleChannel
 						}
@@ -208,7 +215,7 @@ func (d *Dispatcher) drainHeap() {
 	for d.pq.Len() > 0 {
 		msg := heap.Pop(&d.pq).(*ScheduledMessage)
 		// dispatch the message immediately
-		d.dispatchChannel <- msg
+		d.dispatchChannel <- msg.Message
 	}
 }
 

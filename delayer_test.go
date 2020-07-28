@@ -1,4 +1,4 @@
-package gopd
+package gosd
 
 import (
 	"testing"
@@ -26,7 +26,7 @@ func Test_delay_stop(t *testing.T) {
 				egressChannel: tt.fields.egressChannel,
 				cancelChannel: tt.fields.cancelChannel,
 			}
-			d.stop()
+			d.stop(false)
 			if len(d.cancelChannel) != tt.cancelLength {
 				t.Errorf("stop() unexpected cancel channel length = %d, want %d", len(d.cancelChannel), tt.cancelLength)
 			}
@@ -95,7 +95,7 @@ func Test_delay_wait(t *testing.T) {
 			if d.state != Waiting {
 				t.Errorf("wait() unexpected state = %+v, want Waiting", d.state)
 			}
-			d.cancelChannel <- true
+			d.cancelChannel <- false
 			if _, ok := <-f.idleChannel; !ok {
 				t.Errorf("wait() egress channel closed unexpected")
 			}

@@ -1,11 +1,11 @@
-package gopd
+package gosd
 
 import (
 	"time"
 )
 
 type delayer interface {
-	stop()
+	stop(drain bool)
 	wait(msg *ScheduledMessage)
 	available() bool
 }
@@ -36,9 +36,9 @@ func newDelay(respondIdleState bool, egressChannel chan<- interface{}, idleChann
 }
 
 // stop sends a cancel signal to the current timer process
-func (d *delay) stop() {
+func (d *delay) stop(drain bool) {
 	if d.state == Waiting {
-		d.cancelChannel <- true
+		d.cancelChannel <- drain
 	}
 }
 
@@ -50,11 +50,16 @@ func (d *delay) wait(msg *ScheduledMessage) {
 	go func() {
 		for {
 			select {
-			case <-d.cancelChannel:
-				curTimer.Stop()
-				d.state = Idle
-				if d.respondIdleState {
-					d.idleChannel <- true
+			case drain, ok := <-d.cancelChannel:
+				if ok {
+					curTimer.Stop()
+					if drain {
+						d.egressChannel <- msg.Message
+					}
+					d.state = Idle
+					if d.respondIdleState {
+						d.idleChannel <- true
+					}
 				}
 				return
 			case <-curTimer.C:

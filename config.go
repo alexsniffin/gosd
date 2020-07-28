@@ -1,4 +1,4 @@
-package gopd
+package gosd
 
 type DispatcherConfig struct {
 	IngressChannelSize  int
