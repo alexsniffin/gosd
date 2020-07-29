@@ -3,6 +3,7 @@ package gosd
 import (
 	"context"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 )
@@ -70,6 +71,7 @@ func TestDispatcher_Start(t *testing.T) {
 				ingressChannel:  tt.fields.ingressChannel,
 				shutdown:        tt.fields.shutdown,
 				stopProcess:     tt.fields.stopProcess,
+				mutex:           &sync.Mutex{},
 			}
 			if d.stopProcess != nil {
 				close(d.stopProcess)
@@ -122,6 +124,7 @@ func TestDispatcher_Pause(t *testing.T) {
 				ingressChannel:  tt.fields.ingressChannel,
 				shutdown:        tt.fields.shutdown,
 				stopProcess:     tt.fields.stopProcess,
+				mutex:           &sync.Mutex{},
 			}
 			if err := d.Pause(); (err != nil) != tt.wantErr {
 				t.Errorf("Pause() error = %v, wantErr %v", err, tt.wantErr)
@@ -197,6 +200,7 @@ func TestDispatcher_Resume(t *testing.T) {
 				ingressChannel:  tt.fields.ingressChannel,
 				shutdown:        tt.fields.shutdown,
 				stopProcess:     tt.fields.stopProcess,
+				mutex:           &sync.Mutex{},
 			}
 			if d.stopProcess != nil {
 				close(d.stopProcess)
@@ -470,6 +474,7 @@ func TestDispatcher_process(t *testing.T) {
 				ingressChannel:     tt.fields.ingressChannel,
 				shutdown:           tt.fields.shutdown,
 				stopProcess:        tt.fields.stopProcess,
+				mutex:              &sync.Mutex{},
 			}
 			go tt.customAssertion(d)
 			d.process()
@@ -509,6 +514,9 @@ func TestDispatcher_Shutdown(t *testing.T) {
 				items:         make([]*item, 0),
 				maintainOrder: false,
 			},
+			delayer: &fakeDelayer{
+				availableResponse: true,
+				availableCalled:   make(chan bool)},
 			delayerIdleChannel: make(chan bool),
 			ingressChannel:     make(chan *ScheduledMessage),
 			dispatchChannel:    make(chan interface{}),
@@ -529,6 +537,9 @@ func TestDispatcher_Shutdown(t *testing.T) {
 				items:         make([]*item, 0),
 				maintainOrder: false,
 			},
+			delayer: &fakeDelayer{
+				availableResponse: true,
+				availableCalled:   make(chan bool)},
 			delayerIdleChannel: make(chan bool),
 			ingressChannel:     make(chan *ScheduledMessage),
 			dispatchChannel:    make(chan interface{}),
@@ -542,6 +553,7 @@ func TestDispatcher_Shutdown(t *testing.T) {
 				if d.state != shutdownAndDrain {
 					t.Errorf("Shutdown() unexpect state = %v, want Shutdown", d.state)
 				}
+
 			}},
 		{"shutdownNotWithinDeadline", fields{
 			state: processing,
@@ -549,6 +561,9 @@ func TestDispatcher_Shutdown(t *testing.T) {
 				items:         make([]*item, 0),
 				maintainOrder: false,
 			},
+			delayer: &fakeDelayer{
+				availableResponse: true,
+				availableCalled:   make(chan bool)},
 			delayerIdleChannel: make(chan bool),
 			ingressChannel:     make(chan *ScheduledMessage),
 			dispatchChannel:    make(chan interface{}),
@@ -577,7 +592,14 @@ func TestDispatcher_Shutdown(t *testing.T) {
 				ingressChannel:     tt.fields.ingressChannel,
 				shutdown:           tt.fields.shutdown,
 				stopProcess:        tt.fields.stopProcess,
+				mutex:              &sync.Mutex{},
 			}
+			go func(fd *fakeDelayer) {
+				if _, ok := <-fd.availableCalled; !ok {
+					t.Error("process() expected close of delayer.available()")
+				}
+				fd.availableCalled = nil
+			}(tt.fields.delayer.(*fakeDelayer))
 			if err := d.Shutdown(tt.args.ctx, tt.args.drainImmediately); (err != nil) != tt.wantErr {
 				t.Errorf("Shutdown() error = %v, wantErr %v", err, tt.wantErr)
 			}

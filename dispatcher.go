@@ -4,6 +4,7 @@ import (
 	"container/heap"
 	"context"
 	"errors"
+	"sync"
 )
 
 // dispatcherState represents state for a Dispatcher
@@ -31,6 +32,8 @@ type Dispatcher struct {
 	ingressChannel     chan *ScheduledMessage
 	shutdown           chan error
 	stopProcess        chan bool
+
+	mutex *sync.Mutex
 }
 
 // NewDispatcher creates a new instance of a Dispatcher
@@ -57,6 +60,7 @@ func NewDispatcher(config *DispatcherConfig) (*Dispatcher, error) {
 		ingressChannel:     make(chan *ScheduledMessage, config.IngressChannelSize),
 		shutdown:           make(chan error),
 		stopProcess:        make(chan bool),
+		mutex:              &sync.Mutex{},
 	}, nil
 }
 
@@ -66,6 +70,13 @@ func NewDispatcher(config *DispatcherConfig) (*Dispatcher, error) {
 // If drainImmediately is true, then all messages will be dispatched immediately regardless of the schedule set. Order
 // can be lost if new messages are still being ingested
 func (d *Dispatcher) Shutdown(ctx context.Context, drainImmediately bool) error {
+	if d.state == shutdown || d.state == shutdownAndDrain {
+		return errors.New("shutdown has already started")
+	}
+
+	d.mutex.Lock()
+	defer d.mutex.Unlock()
+
 	// if paused, resume the process in order to drain messages
 	if d.state == paused {
 		d.delayer.wait(d.nextMessage)
@@ -106,8 +117,9 @@ func (d *Dispatcher) Start() error {
 	} else if d.state == processing {
 		return errors.New("dispatcher is already running")
 	}
-
+	d.mutex.Lock()
 	d.state = processing
+	d.mutex.Unlock()
 	d.process()
 	return nil
 }
@@ -119,10 +131,11 @@ func (d *Dispatcher) Pause() error {
 	} else if d.state == paused {
 		return errors.New("dispatcher is already paused")
 	}
-
+	d.mutex.Lock()
 	d.state = paused
 	d.stopProcess <- true
 	d.delayer.stop(false)
+	d.mutex.Unlock()
 	return nil
 }
 
@@ -135,10 +148,12 @@ func (d *Dispatcher) Resume() error {
 		return errors.New("dispatcher is already running")
 	}
 
+	d.mutex.Lock()
 	d.state = processing
 	if d.nextMessage != nil {
 		d.delayer.wait(d.nextMessage)
 	}
+	d.mutex.Unlock()
 	d.process()
 	return nil
 }
