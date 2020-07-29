@@ -71,7 +71,7 @@ func NewDispatcher(config *DispatcherConfig) (*Dispatcher, error) {
 // can be lost if new messages are still being ingested
 func (d *Dispatcher) Shutdown(ctx context.Context, drainImmediately bool) error {
 	if d.state == shutdown || d.state == shutdownAndDrain {
-		return errors.New("shutdown has already started")
+		return errors.New("shutdown has already happened")
 	}
 
 	d.mutex.Lock()
@@ -112,12 +112,13 @@ func (d *Dispatcher) Shutdown(ctx context.Context, drainImmediately bool) error 
 
 // Start initializes the processing of scheduled messages and blocks
 func (d *Dispatcher) Start() error {
+	d.mutex.Lock()
 	if d.state == shutdown || d.state == shutdownAndDrain {
-		return errors.New("dispatcher is already running and shutting down")
+		return errors.New("dispatcher is already running and shutting/shut down")
 	} else if d.state == processing {
 		return errors.New("dispatcher is already running")
 	}
-	d.mutex.Lock()
+
 	d.state = processing
 	d.mutex.Unlock()
 	d.process()
@@ -126,12 +127,13 @@ func (d *Dispatcher) Start() error {
 
 // Pause updates the state of the Dispatcher to stop processing messages and will close the main process loop
 func (d *Dispatcher) Pause() error {
+	d.mutex.Lock()
 	if d.state == shutdown || d.state == shutdownAndDrain {
-		return errors.New("dispatcher is shutting down and cannot be paused")
+		return errors.New("dispatcher is shutting/shut down and cannot be paused")
 	} else if d.state == paused {
 		return errors.New("dispatcher is already paused")
 	}
-	d.mutex.Lock()
+
 	d.state = paused
 	d.stopProcess <- true
 	d.delayer.stop(false)
@@ -142,13 +144,13 @@ func (d *Dispatcher) Pause() error {
 // Resume updates the state of the Dispatcher to start processing messages and starts the timer for the last message
 // being processed and blocks
 func (d *Dispatcher) Resume() error {
+	d.mutex.Lock()
 	if d.state == shutdown || d.state == shutdownAndDrain {
-		return errors.New("dispatcher is shutting down")
+		return errors.New("dispatcher is shutting/shut down")
 	} else if d.state == processing {
 		return errors.New("dispatcher is already running")
 	}
 
-	d.mutex.Lock()
 	d.state = processing
 	if d.nextMessage != nil {
 		d.delayer.wait(d.nextMessage)
