@@ -651,12 +651,12 @@ func TestDispatcher_integration_inOrderIngress(t *testing.T) {
 	}
 
 	ingest <- &ScheduledMessage{
-		At:      time.Now().Add(time.Duration(2) * time.Second),
+		At:      time.Now().Add(time.Duration(3) * time.Second),
 		Message: 1,
 	}
 
 	ingest <- &ScheduledMessage{
-		At:      time.Now().Add(time.Duration(4) * time.Second),
+		At:      time.Now().Add(time.Duration(5) * time.Second),
 		Message: 2,
 	}
 
@@ -664,7 +664,7 @@ func TestDispatcher_integration_inOrderIngress(t *testing.T) {
 	for dispatcher.state != processing {
 	}
 
-	ctx, _ := context.WithTimeout(context.Background(), 5000*time.Millisecond)
+	ctx, _ := context.WithTimeout(context.Background(), 10000*time.Millisecond)
 	err := dispatcher.Shutdown(ctx, false)
 	if err != nil {
 		t.Error("integration; failed to drain dispatch channel")
