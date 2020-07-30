@@ -1,6 +1,7 @@
 # gosd
 [![Build Status](https://travis-ci.com/alexsniffin/gosd.svg?branch=master)](https://travis-ci.com/alexsniffin/gosd)
 [![Go Report Card](https://goreportcard.com/badge/github.com/alexsniffin/gosd)](https://goreportcard.com/report/github.com/alexsniffin/gosd)
+[![codecov](https://codecov.io/gh/alexsniffin/gosd/branch/master/graph/badge.svg)](https://codecov.io/gh/alexsniffin/gosd)
 
 go-schedulable-dispatcher (gosd), is a library for scheduling when to dispatch a message to a channel.
 
