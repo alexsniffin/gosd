@@ -651,12 +651,12 @@ func TestDispatcher_integration_inOrderIngress(t *testing.T) {
 	}
 
 	ingest <- &ScheduledMessage{
-		At:      time.Now().Add(time.Duration(1) * time.Second),
+		At:      time.Now().Add(time.Duration(2) * time.Second),
 		Message: 1,
 	}
 
 	ingest <- &ScheduledMessage{
-		At:      time.Now().Add(time.Duration(2) * time.Second),
+		At:      time.Now().Add(time.Duration(4) * time.Second),
 		Message: 2,
 	}
 
@@ -664,7 +664,7 @@ func TestDispatcher_integration_inOrderIngress(t *testing.T) {
 	for dispatcher.state != processing {
 	}
 
-	ctx, _ := context.WithTimeout(context.Background(), 3000*time.Millisecond)
+	ctx, _ := context.WithTimeout(context.Background(), 5000*time.Millisecond)
 	err := dispatcher.Shutdown(ctx, false)
 	if err != nil {
 		t.Error("integration; failed to drain dispatch channel")
@@ -704,7 +704,7 @@ func TestDispatcher_integration_outOfOrderIngress(t *testing.T) {
 	}()
 
 	ingest <- &ScheduledMessage{
-		At:      time.Now().Add(time.Duration(1) * time.Second),
+		At:      time.Now().Add(time.Duration(2) * time.Second),
 		Message: 1,
 	}
 
@@ -714,7 +714,7 @@ func TestDispatcher_integration_outOfOrderIngress(t *testing.T) {
 	}
 
 	ingest <- &ScheduledMessage{
-		At:      time.Now().Add(time.Duration(2) * time.Second),
+		At:      time.Now().Add(time.Duration(4) * time.Second),
 		Message: 2,
 	}
 
@@ -722,7 +722,7 @@ func TestDispatcher_integration_outOfOrderIngress(t *testing.T) {
 	for dispatcher.state != processing {
 	}
 
-	ctx, _ := context.WithTimeout(context.Background(), 3000*time.Millisecond)
+	ctx, _ := context.WithTimeout(context.Background(), 5000*time.Millisecond)
 	err := dispatcher.Shutdown(ctx, false)
 	if err != nil {
 		t.Error("integration; failed to drain dispatch channel")
@@ -774,7 +774,7 @@ func TestDispatcher_integration_sameTimeSameOrder(t *testing.T) {
 	for dispatcher.state != processing {
 	}
 
-	ctx, _ := context.WithTimeout(context.Background(), 3000*time.Millisecond)
+	ctx, _ := context.WithTimeout(context.Background(), 5000*time.Millisecond)
 	err := dispatcher.Shutdown(ctx, false)
 	if err != nil {
 		t.Error("integration; failed to drain dispatch channel")
