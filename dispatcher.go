@@ -183,7 +183,7 @@ func (d *Dispatcher) process() {
 				if !d.guaranteeOrder && len(d.delayerIdleChannel) > 0 {
 					<-d.delayerIdleChannel
 					d.waitNextMessage()
-				} else if d.delayer.available() {
+				} else if d.guaranteeOrder && d.delayer.available() {
 					d.waitNextMessage()
 				}
 				// skip ingest to prevent heap from exceeding MaxMessages
@@ -192,7 +192,7 @@ func (d *Dispatcher) process() {
 				if !d.guaranteeOrder && len(d.delayerIdleChannel) > 0 {
 					<-d.delayerIdleChannel
 					d.waitNextMessage()
-				} else if d.delayer.available() {
+				} else if d.guaranteeOrder && d.delayer.available() {
 					d.waitNextMessage()
 				}
 			}

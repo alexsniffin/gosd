@@ -251,15 +251,12 @@ func TestDispatcher_process(t *testing.T) {
 			pq: priorityQueue{
 				items: []*item{{&ScheduledMessage{}, 0}},
 			},
-			maxMessages: 1,
-			stopProcess: make(chan bool)},
+			maxMessages:        1,
+			delayerIdleChannel: make(chan bool, 1),
+			stopProcess:        make(chan bool)},
 			func(d *Dispatcher) {
 				if fd, ok := d.delayer.(*fakeDelayer); ok {
-					if _, ok := <-fd.availableCalled; !ok {
-						t.Error("process() expected close of delayer.available()")
-					}
-					fd.availableCalled = nil
-
+					d.delayerIdleChannel <- true
 					if _, ok := <-fd.waitCalled; !ok {
 						t.Error("process() expected close of delayer.wait()")
 					}
@@ -435,16 +432,13 @@ func TestDispatcher_process(t *testing.T) {
 			pq: priorityQueue{
 				items: []*item{{&ScheduledMessage{}, 0}},
 			},
-			maxMessages:     2,
-			dispatchChannel: make(chan interface{}),
-			stopProcess:     make(chan bool)},
+			maxMessages:        2,
+			dispatchChannel:    make(chan interface{}),
+			stopProcess:        make(chan bool),
+			delayerIdleChannel: make(chan bool, 1)},
 			func(d *Dispatcher) {
 				if fd, ok := d.delayer.(*fakeDelayer); ok {
-					if _, ok := <-fd.availableCalled; !ok {
-						t.Error("process() expected close of delayer.available()")
-					}
-					fd.availableCalled = nil
-
+					d.delayerIdleChannel <- true
 					if _, ok := <-fd.waitCalled; !ok {
 						t.Error("process() expected close of delayer.wait()")
 					}
