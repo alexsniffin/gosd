@@ -3,10 +3,17 @@ package gosd
 import (
 	"context"
 	"fmt"
+	"os"
 	"sync"
 	"testing"
 	"time"
 )
+
+func skipCI(t *testing.T) {
+	if os.Getenv("CI") != "" {
+		t.Skip("Skipping testing in CI environment")
+	}
+}
 
 type fakeDelayer struct {
 	stopCalled        chan bool
@@ -609,6 +616,8 @@ func TestDispatcher_Shutdown(t *testing.T) {
 }
 
 func TestDispatcher_integration_inOrderIngress(t *testing.T) {
+	skipCI(t)
+
 	dispatcher, _ := NewDispatcher(&DispatcherConfig{
 		IngressChannelSize:  3,
 		DispatchChannelSize: 3,
@@ -667,6 +676,8 @@ func TestDispatcher_integration_inOrderIngress(t *testing.T) {
 }
 
 func TestDispatcher_integration_outOfOrderIngress(t *testing.T) {
+	skipCI(t)
+
 	dispatcher, _ := NewDispatcher(&DispatcherConfig{
 		IngressChannelSize:  3,
 		DispatchChannelSize: 3,
@@ -725,6 +736,8 @@ func TestDispatcher_integration_outOfOrderIngress(t *testing.T) {
 }
 
 func TestDispatcher_integration_sameTimeSameOrder(t *testing.T) {
+	skipCI(t)
+
 	dispatcher, _ := NewDispatcher(&DispatcherConfig{
 		IngressChannelSize:  100,
 		DispatchChannelSize: 100,
