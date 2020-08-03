@@ -2,7 +2,6 @@ package gosd
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"sync"
 	"testing"
@@ -232,7 +231,6 @@ func TestDispatcher_process(t *testing.T) {
 
 	type fields struct {
 		state              dispatcherState
-		guaranteeOrder     bool
 		pq                 priorityQueue
 		maxMessages        int
 		nextMessage        *ScheduledMessage
@@ -249,8 +247,7 @@ func TestDispatcher_process(t *testing.T) {
 		customAssertion func(*Dispatcher)
 	}{
 		{"pqMaxMessageSize", fields{
-			guaranteeOrder: false,
-			state:          processing,
+			state: processing,
 			delayer: &fakeDelayer{
 				availableResponse: true,
 				availableCalled:   make(chan bool),
@@ -265,7 +262,7 @@ func TestDispatcher_process(t *testing.T) {
 				if fd, ok := d.delayer.(*fakeDelayer); ok {
 					d.delayerIdleChannel <- true
 					if _, ok := <-fd.waitCalled; !ok {
-						t.Error("process() expected close of delayer.wait()")
+						t.Error("process() unexpected close of delayer.wait()")
 					}
 					fd.waitCalled = nil
 
@@ -279,24 +276,26 @@ func TestDispatcher_process(t *testing.T) {
 				}
 			}},
 		{"shutdownAndDrain", fields{
-			guaranteeOrder: false,
-			state:          shutdownAndDrain,
+			state: shutdownAndDrain,
 			delayer: &fakeDelayer{
+				stopCalled:        make(chan bool),
 				availableResponse: true,
 				availableCalled:   make(chan bool),
 			},
 			pq: priorityQueue{
 				items: []*item{{&ScheduledMessage{}, 0}},
 			},
-			maxMessages:     1,
-			dispatchChannel: make(chan interface{}),
-			stopProcess:     make(chan bool)},
+			maxMessages:        1,
+			dispatchChannel:    make(chan interface{}),
+			stopProcess:        make(chan bool),
+			delayerIdleChannel: make(chan bool, 1)},
 			func(d *Dispatcher) {
 				if fd, ok := d.delayer.(*fakeDelayer); ok {
-					if _, ok := <-fd.availableCalled; !ok {
-						t.Error("process() expected close of delayer.available()")
+					d.delayerIdleChannel <- true
+					if _, ok := <-fd.stopCalled; !ok {
+						t.Error("process() unexpected close of delayer.stop()")
 					}
-					fd.availableCalled = nil
+					fd.stopCalled = nil
 
 					if _, ok := <-d.dispatchChannel; !ok {
 						t.Error("process() message expected from dispatchChannel")
@@ -327,7 +326,7 @@ func TestDispatcher_process(t *testing.T) {
 					msg := &ScheduledMessage{}
 					d.ingressChannel <- msg
 					if _, ok := <-fd.waitCalled; !ok {
-						t.Error("process() expected close of delayer.wait()")
+						t.Error("process() unexpected close of delayer.wait()")
 					}
 					fd.waitCalled = nil
 
@@ -366,8 +365,7 @@ func TestDispatcher_process(t *testing.T) {
 				}
 			}},
 		{"ingressChannelReplaceNextMessage", fields{
-			state:          processing,
-			guaranteeOrder: false,
+			state: processing,
 			delayer: &fakeDelayer{
 				waitCalled: make(chan *ScheduledMessage),
 				stopCalled: make(chan bool)},
@@ -377,7 +375,7 @@ func TestDispatcher_process(t *testing.T) {
 			},
 			maxMessages:        1,
 			nextMessage:        &ScheduledMessage{At: time.Now().Add(10 + time.Second)},
-			delayerIdleChannel: make(chan bool),
+			delayerIdleChannel: make(chan bool, 1),
 			ingressChannel:     make(chan *ScheduledMessage, 1),
 			stopProcess:        make(chan bool)},
 			func(d *Dispatcher) {
@@ -385,14 +383,14 @@ func TestDispatcher_process(t *testing.T) {
 					msg := &ScheduledMessage{At: time.Now()}
 					d.ingressChannel <- msg
 					if _, ok := <-fd.stopCalled; !ok {
-						t.Error("process() expected close of delayer.stop()")
+						t.Error("process() unexpected close of delayer.stop()")
 					}
 					fd.stopCalled = nil
 
 					d.delayerIdleChannel <- true
 
 					if _, ok := <-fd.waitCalled; !ok {
-						t.Error("process() expected close of delayer.wait()")
+						t.Error("process() unexpected close of delayer.wait()")
 					}
 					fd.waitCalled = nil
 
@@ -447,7 +445,7 @@ func TestDispatcher_process(t *testing.T) {
 				if fd, ok := d.delayer.(*fakeDelayer); ok {
 					d.delayerIdleChannel <- true
 					if _, ok := <-fd.waitCalled; !ok {
-						t.Error("process() expected close of delayer.wait()")
+						t.Error("process() unexpected close of delayer.wait()")
 					}
 					fd.waitCalled = nil
 
@@ -465,7 +463,6 @@ func TestDispatcher_process(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			d := &Dispatcher{
 				state:              tt.fields.state,
-				guaranteeOrder:     tt.fields.guaranteeOrder,
 				pq:                 tt.fields.pq,
 				maxMessages:        tt.fields.maxMessages,
 				nextMessage:        tt.fields.nextMessage,
@@ -758,7 +755,6 @@ func TestDispatcher_integration_sameTimeSameOrder(t *testing.T) {
 			case msg, ok := <-dispatch:
 				if ok {
 					msgValue := msg.(int)
-					fmt.Println(msgValue)
 					if msgValue != i {
 						t.Errorf("integration; unexpected value from message = %d, want = %d", msgValue, i)
 						t.FailNow()
@@ -789,7 +785,7 @@ func TestDispatcher_integration_sameTimeSameOrder(t *testing.T) {
 	close(done)
 }
 
-func RunDispatchLoadTest(b *testing.B, totalMessages int, config DispatcherConfig) {
+func RunDispatchLoadTest(b *testing.B, totalMessages int, sameTime bool, config DispatcherConfig) {
 	dispatcher, _ := NewDispatcher(&config)
 	ingest := dispatcher.IngressChannel()
 	dispatch := dispatcher.DispatchChannel()
@@ -799,11 +795,15 @@ func RunDispatchLoadTest(b *testing.B, totalMessages int, config DispatcherConfi
 	for dispatcher.state != processing {
 	}
 
+	at := time.Now()
 	ingestComplete := make(chan bool)
 	go func() {
 		for i := 0; i < totalMessages; i++ {
+			if !sameTime {
+				at = time.Now()
+			}
 			ingest <- &ScheduledMessage{
-				At:      time.Now(),
+				At:      at,
 				Message: i,
 			}
 		}
@@ -817,6 +817,7 @@ func RunDispatchLoadTest(b *testing.B, totalMessages int, config DispatcherConfi
 			_, ok := <-dispatch
 			if ok {
 				messagesReceived++
+				// fmt.Println(fmt.Sprintf("%d", msg.(int)))
 			}
 		}
 		if messagesReceived != totalMessages {
@@ -837,7 +838,7 @@ func RunDispatchLoadTest(b *testing.B, totalMessages int, config DispatcherConfi
 
 func Benchmark_integration_unordered(b *testing.B) {
 	for n := 0; n < b.N; n++ {
-		RunDispatchLoadTest(b, 1000, DispatcherConfig{
+		RunDispatchLoadTest(b, 1000, false, DispatcherConfig{
 			IngressChannelSize:  1000,
 			DispatchChannelSize: 1000,
 			MaxMessages:         1000,
@@ -848,7 +849,7 @@ func Benchmark_integration_unordered(b *testing.B) {
 
 func Benchmark_integration_unorderedSmallBuffer(b *testing.B) {
 	for n := 0; n < b.N; n++ {
-		RunDispatchLoadTest(b, 1000, DispatcherConfig{
+		RunDispatchLoadTest(b, 1000, false, DispatcherConfig{
 			IngressChannelSize:  1,
 			DispatchChannelSize: 1,
 			MaxMessages:         1000,
@@ -859,7 +860,7 @@ func Benchmark_integration_unorderedSmallBuffer(b *testing.B) {
 
 func Benchmark_integration_unorderedSmallHeap(b *testing.B) {
 	for n := 0; n < b.N; n++ {
-		RunDispatchLoadTest(b, 1000, DispatcherConfig{
+		RunDispatchLoadTest(b, 1000, false, DispatcherConfig{
 			IngressChannelSize:  1000,
 			DispatchChannelSize: 1000,
 			MaxMessages:         10,
@@ -870,7 +871,7 @@ func Benchmark_integration_unorderedSmallHeap(b *testing.B) {
 
 func Benchmark_integration_ordered(b *testing.B) {
 	for n := 0; n < b.N; n++ {
-		RunDispatchLoadTest(b, 1000, DispatcherConfig{
+		RunDispatchLoadTest(b, 1000, false, DispatcherConfig{
 			IngressChannelSize:  1000,
 			DispatchChannelSize: 1000,
 			MaxMessages:         1000,
@@ -881,7 +882,7 @@ func Benchmark_integration_ordered(b *testing.B) {
 
 func Benchmark_integration_orderedSmallBuffer(b *testing.B) {
 	for n := 0; n < b.N; n++ {
-		RunDispatchLoadTest(b, 1000, DispatcherConfig{
+		RunDispatchLoadTest(b, 1000, false, DispatcherConfig{
 			IngressChannelSize:  1,
 			DispatchChannelSize: 1,
 			MaxMessages:         1000,
@@ -892,10 +893,21 @@ func Benchmark_integration_orderedSmallBuffer(b *testing.B) {
 
 func Benchmark_integration_orderedSmallHeap(b *testing.B) {
 	for n := 0; n < b.N; n++ {
-		RunDispatchLoadTest(b, 1000, DispatcherConfig{
+		RunDispatchLoadTest(b, 1000, false, DispatcherConfig{
 			IngressChannelSize:  1000,
 			DispatchChannelSize: 1000,
 			MaxMessages:         10,
+			GuaranteeOrder:      true,
+		})
+	}
+}
+
+func Benchmark_integration_orderedSameTime(b *testing.B) {
+	for n := 0; n < b.N; n++ {
+		RunDispatchLoadTest(b, 1000, true, DispatcherConfig{
+			IngressChannelSize:  1000,
+			DispatchChannelSize: 1000,
+			MaxMessages:         1000,
 			GuaranteeOrder:      true,
 		})
 	}

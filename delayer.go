@@ -18,20 +18,18 @@ const (
 )
 
 type delay struct {
-	state            delayState
-	respondIdleState bool
+	state delayState
 
 	idleChannel   chan<- bool
 	egressChannel chan<- interface{}
 	cancelChannel chan bool
 }
 
-func newDelay(respondIdleState bool, egressChannel chan<- interface{}, idleChannel chan<- bool) *delay {
+func newDelay(egressChannel chan<- interface{}, idleChannel chan<- bool) *delay {
 	return &delay{
-		respondIdleState: respondIdleState,
-		idleChannel:      idleChannel,
-		egressChannel:    egressChannel,
-		cancelChannel:    make(chan bool, 1),
+		idleChannel:   idleChannel,
+		egressChannel: egressChannel,
+		cancelChannel: make(chan bool, 1),
 	}
 }
 
@@ -57,17 +55,13 @@ func (d *delay) wait(msg *ScheduledMessage) {
 						d.egressChannel <- msg.Message
 					}
 					d.state = idle
-					if d.respondIdleState {
-						d.idleChannel <- true
-					}
+					d.idleChannel <- true
 				}
 				return
 			case <-curTimer.C:
 				d.egressChannel <- msg.Message
 				d.state = idle
-				if d.respondIdleState {
-					d.idleChannel <- true
-				}
+				d.idleChannel <- true
 				return
 			}
 		}

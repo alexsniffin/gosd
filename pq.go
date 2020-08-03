@@ -57,13 +57,13 @@ func (pq *priorityQueue) Pop() interface{} {
 			}
 		}
 		if nextItem != nil {
-			old.items[n-i+1] = nil
+			old.items[n-(i-1)] = nil
 			nextItem.Index = -1
 			var newPq []*item
-			if n-i == 0 {
-				newPq = old.items[n-i+1 : n]
+			if n-(i-1) == 0 {
+				newPq = old.items[1:n]
 			} else {
-				newPq = append(old.items[0:n-i+1], append(old.items[n-i+2:n])...)
+				newPq = append(old.items[0:n-(i-1)], append(old.items[n-(i-2):n])...)
 			}
 			pq.items = newPq
 			return nextItem.Message

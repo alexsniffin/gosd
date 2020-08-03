@@ -19,9 +19,8 @@ const (
 
 // Dispatcher processes the ingress and dispatching of scheduled messages
 type Dispatcher struct {
-	state          dispatcherState
-	maxMessages    int
-	guaranteeOrder bool
+	state       dispatcherState
+	maxMessages int
 
 	pq          priorityQueue
 	nextMessage *ScheduledMessage
@@ -53,8 +52,7 @@ func NewDispatcher(config *DispatcherConfig) (*Dispatcher, error) {
 	return &Dispatcher{
 		pq:                 newPq,
 		maxMessages:        config.MaxMessages,
-		guaranteeOrder:     config.GuaranteeOrder,
-		delayer:            newDelay(!config.GuaranteeOrder, newDispatchChannel, newIdleChannel),
+		delayer:            newDelay(newDispatchChannel, newIdleChannel),
 		delayerIdleChannel: newIdleChannel,
 		dispatchChannel:    newDispatchChannel,
 		ingressChannel:     make(chan *ScheduledMessage, config.IngressChannelSize),
@@ -170,31 +168,23 @@ func (d *Dispatcher) process() {
 			// drain the heap
 			if d.state == shutdownAndDrain {
 				d.delayer.stop(true)
-				if !d.guaranteeOrder && len(d.delayerIdleChannel) > 0 {
+				if len(d.delayerIdleChannel) > 0 {
 					<-d.delayerIdleChannel
-					d.drainHeap()
-				} else if d.delayer.available() {
 					d.drainHeap()
 				}
 			}
 
 			// check if we've exceeded the maximum messages to store in the heap
 			if d.pq.Len() >= d.maxMessages {
-				if !d.guaranteeOrder && len(d.delayerIdleChannel) > 0 {
+				if len(d.delayerIdleChannel) > 0 {
 					<-d.delayerIdleChannel
-					d.waitNextMessage()
-				} else if d.guaranteeOrder && d.delayer.available() {
 					d.waitNextMessage()
 				}
 				// skip ingest to prevent heap from exceeding MaxMessages
 				continue
-			} else if d.pq.Len() > 0 {
-				if !d.guaranteeOrder && len(d.delayerIdleChannel) > 0 {
-					<-d.delayerIdleChannel
-					d.waitNextMessage()
-				} else if d.guaranteeOrder && d.delayer.available() {
-					d.waitNextMessage()
-				}
+			} else if d.pq.Len() > 0 && len(d.delayerIdleChannel) > 0 {
+				<-d.delayerIdleChannel
+				d.waitNextMessage()
 			}
 
 			if len(d.ingressChannel) > 0 {
@@ -206,9 +196,7 @@ func (d *Dispatcher) process() {
 						heap.Push(&d.pq, d.nextMessage)
 						d.nextMessage = msg
 						d.delayer.stop(false)
-						if !d.guaranteeOrder {
-							<-d.delayerIdleChannel
-						}
+						<-d.delayerIdleChannel
 						d.delayer.wait(msg)
 					} else if d.nextMessage == nil {
 						d.nextMessage = msg
