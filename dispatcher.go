@@ -7,7 +7,7 @@ import (
 	"sync"
 )
 
-// dispatcherState represents state for a Dispatcher
+// dispatcherState represents state for a Dispatcher.
 type dispatcherState int
 
 const (
@@ -17,7 +17,7 @@ const (
 	shutdownAndDrain
 )
 
-// Dispatcher processes the ingress and dispatching of scheduled messages
+// Dispatcher processes the ingress and dispatching of scheduled messages.
 type Dispatcher struct {
 	state       dispatcherState
 	maxMessages int
@@ -35,7 +35,7 @@ type Dispatcher struct {
 	mutex *sync.Mutex
 }
 
-// NewDispatcher creates a new instance of a Dispatcher
+// NewDispatcher creates a new instance of a Dispatcher.
 func NewDispatcher(config *DispatcherConfig) (*Dispatcher, error) {
 	if config.MaxMessages <= 0 {
 		return nil, errors.New("MaxMessages should be greater than 0")
@@ -63,10 +63,10 @@ func NewDispatcher(config *DispatcherConfig) (*Dispatcher, error) {
 }
 
 // Shutdown will attempt to shutdown the Dispatcher within the context deadline, otherwise terminating the process
-// ungracefully
+// ungracefully.
 //
 // If drainImmediately is true, then all messages will be dispatched immediately regardless of the schedule set. Order
-// can be lost if new messages are still being ingested
+// can be lost if new messages are still being ingested.
 func (d *Dispatcher) Shutdown(ctx context.Context, drainImmediately bool) error {
 	if d.state == shutdown || d.state == shutdownAndDrain {
 		return errors.New("shutdown has already happened")
@@ -108,7 +108,7 @@ func (d *Dispatcher) Shutdown(ctx context.Context, drainImmediately bool) error 
 	}
 }
 
-// Start initializes the processing of scheduled messages and blocks
+// Start initializes the processing of scheduled messages and blocks.
 func (d *Dispatcher) Start() error {
 	d.mutex.Lock()
 	if d.state == shutdown || d.state == shutdownAndDrain {
@@ -123,7 +123,7 @@ func (d *Dispatcher) Start() error {
 	return nil
 }
 
-// Pause updates the state of the Dispatcher to stop processing messages and will close the main process loop
+// Pause updates the state of the Dispatcher to stop processing messages and will close the main process loop.
 func (d *Dispatcher) Pause() error {
 	d.mutex.Lock()
 	if d.state == shutdown || d.state == shutdownAndDrain {
@@ -140,7 +140,7 @@ func (d *Dispatcher) Pause() error {
 }
 
 // Resume updates the state of the Dispatcher to start processing messages and starts the timer for the last message
-// being processed and blocks
+// being processed and blocks.
 func (d *Dispatcher) Resume() error {
 	d.mutex.Lock()
 	if d.state == shutdown || d.state == shutdownAndDrain {
@@ -158,53 +158,75 @@ func (d *Dispatcher) Resume() error {
 	return nil
 }
 
-// process handles the processing of scheduled messages
+// process handles the processing of scheduled messages.
 func (d *Dispatcher) process() {
 	for {
 		select {
 		case <-d.stopProcess:
 			return
 		default:
-			// drain the heap
-			if d.state == shutdownAndDrain {
-				d.delayer.stop(true)
-				if len(d.delayerIdleChannel) > 0 {
-					<-d.delayerIdleChannel
-					d.drainHeap()
-				}
-			}
+			// check if the state has changed to `shutdownAndDrain`
+			d.handleShutdownAndDrain()
 
-			// check if we've exceeded the maximum messages to store in the heap
-			if d.pq.Len() >= d.maxMessages {
-				if len(d.delayerIdleChannel) > 0 {
-					<-d.delayerIdleChannel
-					d.waitNextMessage()
-				}
-				// skip ingest to prevent heap from exceeding MaxMessages
+			// check pq for the next message to wait on and continue if not full
+			if cont := d.handlePriorityQueue(); !cont {
 				continue
-			} else if d.pq.Len() > 0 && len(d.delayerIdleChannel) > 0 {
-				<-d.delayerIdleChannel
-				d.waitNextMessage()
 			}
 
-			if len(d.ingressChannel) > 0 {
-				if msg, ok := <-d.ingressChannel; ok {
-					if d.state == shutdownAndDrain {
-						// dispatch the new message immediately
-						d.dispatchChannel <- msg.Message
-					} else if d.nextMessage != nil && msg.At.Before(d.nextMessage.At) {
-						heap.Push(&d.pq, d.nextMessage)
-						d.nextMessage = msg
-						d.delayer.stop(false)
-						<-d.delayerIdleChannel
-						d.delayer.wait(msg)
-					} else if d.nextMessage == nil {
-						d.nextMessage = msg
-						d.delayer.wait(msg)
-					} else {
-						heap.Push(&d.pq, msg)
-					}
-				}
+			// check the ingress channel for new messages
+			d.handleIngress()
+		}
+	}
+}
+
+// handleShutdown drains the heap.
+func (d *Dispatcher) handleShutdownAndDrain() {
+	if d.state == shutdownAndDrain {
+		d.delayer.stop(true)
+		if len(d.delayerIdleChannel) > 0 {
+			<-d.delayerIdleChannel
+			d.drainHeap()
+		}
+	}
+}
+
+// handlePriorityQueue checks whether the heap is full and will Pop the next message if present and when the delayer is
+// idle.
+func (d *Dispatcher) handlePriorityQueue() (cont bool) {
+	// check if we've exceeded the maximum messages to store in the heap
+	if d.pq.Len() >= d.maxMessages {
+		if len(d.delayerIdleChannel) > 0 {
+			<-d.delayerIdleChannel
+			d.waitNextMessage()
+		}
+		// skip ingest to prevent heap from exceeding MaxMessages
+		return false
+	} else if d.pq.Len() > 0 && len(d.delayerIdleChannel) > 0 {
+		<-d.delayerIdleChannel
+		d.waitNextMessage()
+	}
+	return true
+}
+
+// handleIngress checks for new messages off the ingress channel and will either dispatch if `shutdownAndDrain`, replace
+// the current delayer message or add to the heap.
+func (d *Dispatcher) handleIngress() {
+	if len(d.ingressChannel) > 0 {
+		if msg, ok := <-d.ingressChannel; ok {
+			if d.state == shutdownAndDrain {
+				// dispatch the new message immediately
+				d.dispatchChannel <- msg.Message
+			} else if d.nextMessage != nil && msg.At.Before(d.nextMessage.At) {
+				heap.Push(&d.pq, d.nextMessage)
+				d.nextMessage = msg
+				d.delayer.stop(false)
+				<-d.delayerIdleChannel
+				d.delayer.wait(msg)
+			} else if d.nextMessage == nil {
+				d.nextMessage = msg
+				d.delayer.wait(msg)
+			} else {
+				heap.Push(&d.pq, msg)
 			}
 		}
 	}
@@ -224,12 +246,12 @@ func (d *Dispatcher) drainHeap() {
 	}
 }
 
-// IngressChannel returns the send-only channel of type `ScheduledMessage`
+// IngressChannel returns the send-only channel of type `ScheduledMessage`.
 func (d *Dispatcher) IngressChannel() chan<- *ScheduledMessage {
 	return d.ingressChannel
 }
 
-// DispatchChannel returns a receive-only channel of type `interface{}`
+// DispatchChannel returns a receive-only channel of type `interface{}`.
 func (d *Dispatcher) DispatchChannel() <-chan interface{} {
 	return d.dispatchChannel
 }

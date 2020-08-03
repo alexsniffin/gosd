@@ -33,14 +33,14 @@ func newDelay(egressChannel chan<- interface{}, idleChannel chan<- bool) *delay 
 	}
 }
 
-// stop sends a cancel signal to the current timer process
+// stop sends a cancel signal to the current timer process.
 func (d *delay) stop(drain bool) {
 	if d.state == waiting {
 		d.cancelChannel <- drain
 	}
 }
 
-// wait will create a timer based on the time from `msg.At` and dispatch the message to the egress channel asynchronously
+// wait will create a timer based on the time from `msg.At` and dispatch the message to the egress channel asynchronously.
 func (d *delay) wait(msg *ScheduledMessage) {
 	d.state = waiting
 	curTimer := time.NewTimer(msg.At.Sub(time.Now()))
@@ -68,7 +68,7 @@ func (d *delay) wait(msg *ScheduledMessage) {
 	}()
 }
 
-// available returns whether the delay is able to accept a new message to wait on
+// available returns whether the delay is able to accept a new message to wait on.
 func (d *delay) available() bool {
 	return d.state == idle
 }
