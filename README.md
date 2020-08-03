@@ -51,5 +51,5 @@ Benchmark_integration_unorderedSmallHeap-12      	     122	   8860732 ns/op
 Benchmark_integration_ordered-12                 	      96	  13354174 ns/op
 Benchmark_integration_orderedSmallBuffer-12      	     121	  10115702 ns/op
 Benchmark_integration_orderedSmallHeap-12        	     129	  10441857 ns/op
-Benchmark_integration_orderedSameTime-12    	      99	  12575961 ns/op
+Benchmark_integration_orderedSameTime-12        	     99	   	  12575961 ns/op
 ```
