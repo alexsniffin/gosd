@@ -43,7 +43,7 @@ func (d *delay) stop(drain bool) {
 // wait will create a timer based on the time from `msg.At` and dispatch the message to the egress channel asynchronously.
 func (d *delay) wait(msg *ScheduledMessage) {
 	d.state = waiting
-	curTimer := time.NewTimer(msg.At.Sub(time.Now()))
+	curTimer := time.NewTimer(time.Until(msg.At))
 
 	go func() {
 		for {
