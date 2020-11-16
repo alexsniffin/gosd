@@ -1,12 +1,9 @@
 dist: bionic
 
-language: go
-
-go:
-  - 1.15.x
+services:
+  - docker
 
 script:
-  - make test
-
-after_success:
-  - bash <(curl -s https://codecov.io/bash)
+  - docker build --build-arg VERSION=1.13 .
+  - docker build --build-arg VERSION=1.14 .
+  - docker build --build-arg VERSION=1.15 .
