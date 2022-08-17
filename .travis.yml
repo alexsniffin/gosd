@@ -4,6 +4,8 @@ services:
   - docker
 
 script:
-  - docker build --build-arg VERSION=1.13 .
-  - docker build --build-arg VERSION=1.14 .
   - docker build --build-arg VERSION=1.15 .
+  - docker build --build-arg VERSION=1.16 .
+  - docker build --build-arg VERSION=1.17 .
+  - docker build --build-arg VERSION=1.18 .
+  - docker build --build-arg VERSION=1.19 .

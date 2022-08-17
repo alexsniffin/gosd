@@ -14,26 +14,26 @@ func skipCI(t *testing.T) {
 	}
 }
 
-type fakeDelayer struct {
+type fakeDelayer[T any] struct {
 	stopCalled        chan bool
-	waitCalled        chan *ScheduledMessage
+	waitCalled        chan *ScheduledMessage[T]
 	availableCalled   chan bool
 	availableResponse bool
 }
 
-func (fd *fakeDelayer) stop(drain bool) {
+func (fd *fakeDelayer[T]) stop(drain bool) {
 	if fd.stopCalled != nil {
 		fd.stopCalled <- true
 	}
 }
 
-func (fd *fakeDelayer) wait(msg *ScheduledMessage) {
+func (fd *fakeDelayer[T]) wait(msg *ScheduledMessage[T]) {
 	if fd.waitCalled != nil {
 		fd.waitCalled <- msg
 	}
 }
 
-func (fd *fakeDelayer) available() bool {
+func (fd *fakeDelayer[T]) available() bool {
 	if fd.availableCalled != nil {
 		fd.availableCalled <- true
 	}
@@ -45,12 +45,12 @@ func TestDispatcher_Start(t *testing.T) {
 
 	type fields struct {
 		state           dispatcherState
-		pq              priorityQueue
+		pq              priorityQueue[any]
 		maxMessages     int
-		nextMessage     *ScheduledMessage
-		delayer         delayer
+		nextMessage     *ScheduledMessage[any]
+		delayer         delayer[any]
 		dispatchChannel chan interface{}
-		ingressChannel  chan *ScheduledMessage
+		ingressChannel  chan *ScheduledMessage[any]
 		shutdown        chan error
 		stopProcess     chan bool
 	}
@@ -67,7 +67,7 @@ func TestDispatcher_Start(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			d := &Dispatcher{
+			d := &Dispatcher[any]{
 				state:           tt.fields.state,
 				pq:              tt.fields.pq,
 				maxMessages:     tt.fields.maxMessages,
@@ -97,12 +97,12 @@ func TestDispatcher_Pause(t *testing.T) {
 
 	type fields struct {
 		state           dispatcherState
-		pq              priorityQueue
+		pq              priorityQueue[any]
 		maxMessages     int
-		nextMessage     *ScheduledMessage
-		delayer         delayer
+		nextMessage     *ScheduledMessage[any]
+		delayer         delayer[any]
 		dispatchChannel chan interface{}
-		ingressChannel  chan *ScheduledMessage
+		ingressChannel  chan *ScheduledMessage[any]
 		shutdown        chan error
 		stopProcess     chan bool
 	}
@@ -113,14 +113,14 @@ func TestDispatcher_Pause(t *testing.T) {
 		wantState      dispatcherState
 		wantErr        bool
 	}{
-		{"processingState", fields{state: processing, delayer: &fakeDelayer{stopCalled: make(chan bool, 1)}, stopProcess: make(chan bool, 1)}, 1, paused, false},
+		{"processingState", fields{state: processing, delayer: &fakeDelayer[any]{stopCalled: make(chan bool, 1)}, stopProcess: make(chan bool, 1)}, 1, paused, false},
 		{"pausedState", fields{state: paused}, 0, paused, true},
 		{"shutdownState", fields{state: shutdown}, 0, shutdown, true},
 		{"shutdownAndDrainState", fields{state: shutdownAndDrain}, 0, shutdownAndDrain, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			d := &Dispatcher{
+			d := &Dispatcher[any]{
 				state:           tt.fields.state,
 				pq:              tt.fields.pq,
 				maxMessages:     tt.fields.maxMessages,
@@ -141,7 +141,7 @@ func TestDispatcher_Pause(t *testing.T) {
 			if len(d.stopProcess) != tt.stopProcessLen {
 				t.Errorf("Pause() invalid stopProcess length = %d, want = %d", len(d.stopProcess), tt.stopProcessLen)
 			}
-			if fd, ok := tt.fields.delayer.(*fakeDelayer); ok {
+			if fd, ok := tt.fields.delayer.(*fakeDelayer[any]); ok {
 				if len(fd.stopCalled) == 0 {
 					t.Error("Pause() delayer.stop() call expected")
 				}
@@ -155,12 +155,12 @@ func TestDispatcher_Resume(t *testing.T) {
 
 	type fields struct {
 		state           dispatcherState
-		pq              priorityQueue
+		pq              priorityQueue[any]
 		maxMessages     int
-		nextMessage     *ScheduledMessage
-		delayer         delayer
+		nextMessage     *ScheduledMessage[any]
+		delayer         delayer[any]
 		dispatchChannel chan interface{}
-		ingressChannel  chan *ScheduledMessage
+		ingressChannel  chan *ScheduledMessage[any]
 		shutdown        chan error
 		stopProcess     chan bool
 	}
@@ -172,19 +172,19 @@ func TestDispatcher_Resume(t *testing.T) {
 	}{
 		{"pausedState", fields{
 			state: paused,
-			pq: priorityQueue{
-				items:         make([]*item, 0),
+			pq: priorityQueue[any]{
+				items:         make([]*item[any], 0),
 				maintainOrder: false,
 			},
 			maxMessages: 1,
-			nextMessage: &ScheduledMessage{},
-			delayer:     &fakeDelayer{waitCalled: make(chan *ScheduledMessage, 1), availableResponse: false},
+			nextMessage: &ScheduledMessage[any]{},
+			delayer:     &fakeDelayer[any]{waitCalled: make(chan *ScheduledMessage[any], 1), availableResponse: false},
 			stopProcess: make(chan bool),
 		}, processing, false},
 		{"pausedStateNilNextMessage", fields{
 			state: paused,
-			pq: priorityQueue{
-				items:         make([]*item, 0),
+			pq: priorityQueue[any]{
+				items:         make([]*item[any], 0),
 				maintainOrder: false,
 			},
 			maxMessages: 1,
@@ -196,7 +196,7 @@ func TestDispatcher_Resume(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			d := &Dispatcher{
+			d := &Dispatcher[any]{
 				state:           tt.fields.state,
 				pq:              tt.fields.pq,
 				maxMessages:     tt.fields.maxMessages,
@@ -217,7 +217,7 @@ func TestDispatcher_Resume(t *testing.T) {
 			if d.state != tt.wantState {
 				t.Errorf("Resume() invalid state = %v, wantState %v", d.state, tt.wantState)
 			}
-			if fd, ok := tt.fields.delayer.(*fakeDelayer); ok {
+			if fd, ok := tt.fields.delayer.(*fakeDelayer[any]); ok {
 				if len(fd.waitCalled) == 0 {
 					t.Error("Resume() delayer.wait() call expected")
 				}
@@ -231,35 +231,35 @@ func TestDispatcher_process(t *testing.T) {
 
 	type fields struct {
 		state              dispatcherState
-		pq                 priorityQueue
+		pq                 priorityQueue[any]
 		maxMessages        int
-		nextMessage        *ScheduledMessage
-		delayer            delayer
+		nextMessage        *ScheduledMessage[any]
+		delayer            delayer[any]
 		delayerIdleChannel chan bool
 		dispatchChannel    chan interface{}
-		ingressChannel     chan *ScheduledMessage
+		ingressChannel     chan *ScheduledMessage[any]
 		shutdown           chan error
 		stopProcess        chan bool
 	}
 	tests := []struct {
 		name            string
 		fields          fields
-		customAssertion func(*Dispatcher)
+		customAssertion func(*Dispatcher[any])
 	}{
 		{"pqMaxMessageSize", fields{
 			state: processing,
-			delayer: &fakeDelayer{
+			delayer: &fakeDelayer[any]{
 				availableResponse: true,
 				availableCalled:   make(chan bool),
-				waitCalled:        make(chan *ScheduledMessage, 1)},
-			pq: priorityQueue{
-				items: []*item{{&ScheduledMessage{}, 0}},
+				waitCalled:        make(chan *ScheduledMessage[any], 1)},
+			pq: priorityQueue[any]{
+				items: []*item[any]{{&ScheduledMessage[any]{}, 0}},
 			},
 			maxMessages:        1,
 			delayerIdleChannel: make(chan bool, 1),
 			stopProcess:        make(chan bool)},
-			func(d *Dispatcher) {
-				if fd, ok := d.delayer.(*fakeDelayer); ok {
+			func(d *Dispatcher[any]) {
+				if fd, ok := d.delayer.(*fakeDelayer[any]); ok {
 					d.delayerIdleChannel <- true
 					if _, ok := <-fd.waitCalled; !ok {
 						t.Error("process() unexpected close of delayer.wait()")
@@ -277,20 +277,20 @@ func TestDispatcher_process(t *testing.T) {
 			}},
 		{"shutdownAndDrain", fields{
 			state: shutdownAndDrain,
-			delayer: &fakeDelayer{
+			delayer: &fakeDelayer[any]{
 				stopCalled:        make(chan bool),
 				availableResponse: true,
 				availableCalled:   make(chan bool),
 			},
-			pq: priorityQueue{
-				items: []*item{{&ScheduledMessage{}, 0}},
+			pq: priorityQueue[any]{
+				items: []*item[any]{{&ScheduledMessage[any]{}, 0}},
 			},
 			maxMessages:        1,
 			dispatchChannel:    make(chan interface{}),
 			stopProcess:        make(chan bool),
 			delayerIdleChannel: make(chan bool, 1)},
-			func(d *Dispatcher) {
-				if fd, ok := d.delayer.(*fakeDelayer); ok {
+			func(d *Dispatcher[any]) {
+				if fd, ok := d.delayer.(*fakeDelayer[any]); ok {
 					d.delayerIdleChannel <- true
 					if _, ok := <-fd.stopCalled; !ok {
 						t.Error("process() unexpected close of delayer.stop()")
@@ -312,18 +312,18 @@ func TestDispatcher_process(t *testing.T) {
 			}},
 		{"ingressChannelNextMessageNil", fields{
 			state: processing,
-			delayer: &fakeDelayer{
-				waitCalled: make(chan *ScheduledMessage)},
-			pq: priorityQueue{
-				items:         make([]*item, 0),
+			delayer: &fakeDelayer[any]{
+				waitCalled: make(chan *ScheduledMessage[any])},
+			pq: priorityQueue[any]{
+				items:         make([]*item[any], 0),
 				maintainOrder: false,
 			},
 			maxMessages:    1,
-			ingressChannel: make(chan *ScheduledMessage, 1),
+			ingressChannel: make(chan *ScheduledMessage[any], 1),
 			stopProcess:    make(chan bool)},
-			func(d *Dispatcher) {
-				if fd, ok := d.delayer.(*fakeDelayer); ok {
-					msg := &ScheduledMessage{}
+			func(d *Dispatcher[any]) {
+				if fd, ok := d.delayer.(*fakeDelayer[any]); ok {
+					msg := &ScheduledMessage[any]{}
 					d.ingressChannel <- msg
 					if _, ok := <-fd.waitCalled; !ok {
 						t.Error("process() unexpected close of delayer.wait()")
@@ -341,18 +341,18 @@ func TestDispatcher_process(t *testing.T) {
 			}},
 		{"ingressChannelPushHeap", fields{
 			state:   processing,
-			delayer: &fakeDelayer{},
-			pq: priorityQueue{
-				items:         make([]*item, 0),
+			delayer: &fakeDelayer[any]{},
+			pq: priorityQueue[any]{
+				items:         make([]*item[any], 0),
 				maintainOrder: false,
 			},
 			maxMessages:    1,
-			nextMessage:    &ScheduledMessage{},
-			ingressChannel: make(chan *ScheduledMessage, 1),
+			nextMessage:    &ScheduledMessage[any]{},
+			ingressChannel: make(chan *ScheduledMessage[any], 1),
 			stopProcess:    make(chan bool)},
-			func(d *Dispatcher) {
-				if _, ok := d.delayer.(*fakeDelayer); ok {
-					msg := &ScheduledMessage{}
+			func(d *Dispatcher[any]) {
+				if _, ok := d.delayer.(*fakeDelayer[any]); ok {
+					msg := &ScheduledMessage[any]{}
 					d.ingressChannel <- msg
 
 					close(d.stopProcess)
@@ -366,21 +366,21 @@ func TestDispatcher_process(t *testing.T) {
 			}},
 		{"ingressChannelReplaceNextMessage", fields{
 			state: processing,
-			delayer: &fakeDelayer{
-				waitCalled: make(chan *ScheduledMessage),
+			delayer: &fakeDelayer[any]{
+				waitCalled: make(chan *ScheduledMessage[any]),
 				stopCalled: make(chan bool)},
-			pq: priorityQueue{
-				items:         make([]*item, 0),
+			pq: priorityQueue[any]{
+				items:         make([]*item[any], 0),
 				maintainOrder: false,
 			},
 			maxMessages:        1,
-			nextMessage:        &ScheduledMessage{At: time.Now().Add(10 + time.Second)},
+			nextMessage:        &ScheduledMessage[any]{At: time.Now().Add(10 + time.Second)},
 			delayerIdleChannel: make(chan bool, 1),
-			ingressChannel:     make(chan *ScheduledMessage, 1),
+			ingressChannel:     make(chan *ScheduledMessage[any], 1),
 			stopProcess:        make(chan bool)},
-			func(d *Dispatcher) {
-				if fd, ok := d.delayer.(*fakeDelayer); ok {
-					msg := &ScheduledMessage{At: time.Now()}
+			func(d *Dispatcher[any]) {
+				if fd, ok := d.delayer.(*fakeDelayer[any]); ok {
+					msg := &ScheduledMessage[any]{At: time.Now()}
 					d.ingressChannel <- msg
 					if _, ok := <-fd.stopCalled; !ok {
 						t.Error("process() unexpected close of delayer.stop()")
@@ -405,18 +405,18 @@ func TestDispatcher_process(t *testing.T) {
 			}},
 		{"ingressChannelShutdownAndDrain", fields{
 			state:   shutdownAndDrain,
-			delayer: &fakeDelayer{},
-			pq: priorityQueue{
-				items:         make([]*item, 0),
+			delayer: &fakeDelayer[any]{},
+			pq: priorityQueue[any]{
+				items:         make([]*item[any], 0),
 				maintainOrder: false,
 			},
 			maxMessages:     1,
-			ingressChannel:  make(chan *ScheduledMessage, 1),
+			ingressChannel:  make(chan *ScheduledMessage[any], 1),
 			dispatchChannel: make(chan interface{}),
 			stopProcess:     make(chan bool)},
-			func(d *Dispatcher) {
-				if _, ok := d.delayer.(*fakeDelayer); ok {
-					msg := &ScheduledMessage{At: time.Now()}
+			func(d *Dispatcher[any]) {
+				if _, ok := d.delayer.(*fakeDelayer[any]); ok {
+					msg := &ScheduledMessage[any]{At: time.Now()}
 					d.ingressChannel <- msg
 
 					if _, ok := <-d.dispatchChannel; !ok {
@@ -430,19 +430,19 @@ func TestDispatcher_process(t *testing.T) {
 			}},
 		{"pqPop", fields{
 			state: processing,
-			delayer: &fakeDelayer{
+			delayer: &fakeDelayer[any]{
 				availableResponse: true,
 				availableCalled:   make(chan bool),
-				waitCalled:        make(chan *ScheduledMessage)},
-			pq: priorityQueue{
-				items: []*item{{&ScheduledMessage{}, 0}},
+				waitCalled:        make(chan *ScheduledMessage[any])},
+			pq: priorityQueue[any]{
+				items: []*item[any]{{&ScheduledMessage[any]{}, 0}},
 			},
 			maxMessages:        2,
 			dispatchChannel:    make(chan interface{}),
 			stopProcess:        make(chan bool),
 			delayerIdleChannel: make(chan bool, 1)},
-			func(d *Dispatcher) {
-				if fd, ok := d.delayer.(*fakeDelayer); ok {
+			func(d *Dispatcher[any]) {
+				if fd, ok := d.delayer.(*fakeDelayer[any]); ok {
 					d.delayerIdleChannel <- true
 					if _, ok := <-fd.waitCalled; !ok {
 						t.Error("process() unexpected close of delayer.wait()")
@@ -461,7 +461,7 @@ func TestDispatcher_process(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			d := &Dispatcher{
+			d := &Dispatcher[any]{
 				state:              tt.fields.state,
 				pq:                 tt.fields.pq,
 				maxMessages:        tt.fields.maxMessages,
@@ -485,13 +485,13 @@ func TestDispatcher_Shutdown(t *testing.T) {
 
 	type fields struct {
 		state              dispatcherState
-		pq                 priorityQueue
+		pq                 priorityQueue[any]
 		maxMessages        int
-		nextMessage        *ScheduledMessage
-		delayer            delayer
+		nextMessage        *ScheduledMessage[any]
+		delayer            delayer[any]
 		delayerIdleChannel chan bool
 		dispatchChannel    chan interface{}
-		ingressChannel     chan *ScheduledMessage
+		ingressChannel     chan *ScheduledMessage[any]
 		shutdown           chan error
 		stopProcess        chan bool
 	}
@@ -504,19 +504,19 @@ func TestDispatcher_Shutdown(t *testing.T) {
 		fields          fields
 		args            args
 		wantErr         bool
-		customAssertion func(*Dispatcher)
+		customAssertion func(*Dispatcher[any])
 	}{
 		{"shutdownWithinDeadline", fields{
 			state: processing,
-			pq: priorityQueue{
-				items:         make([]*item, 0),
+			pq: priorityQueue[any]{
+				items:         make([]*item[any], 0),
 				maintainOrder: false,
 			},
-			delayer: &fakeDelayer{
+			delayer: &fakeDelayer[any]{
 				availableResponse: true,
 				availableCalled:   make(chan bool)},
 			delayerIdleChannel: make(chan bool),
-			ingressChannel:     make(chan *ScheduledMessage),
+			ingressChannel:     make(chan *ScheduledMessage[any]),
 			dispatchChannel:    make(chan interface{}),
 			stopProcess:        make(chan bool)}, args{
 			ctx: func() context.Context {
@@ -524,22 +524,22 @@ func TestDispatcher_Shutdown(t *testing.T) {
 				return ctx
 			}(),
 			drainImmediately: false}, false,
-			func(d *Dispatcher) {
+			func(d *Dispatcher[any]) {
 				if d.state != shutdown {
 					t.Errorf("Shutdown() unexpect state = %v, want Shutdown", d.state)
 				}
 			}},
 		{"shutdownWithinDeadlineDrain", fields{
 			state: processing,
-			pq: priorityQueue{
-				items:         make([]*item, 0),
+			pq: priorityQueue[any]{
+				items:         make([]*item[any], 0),
 				maintainOrder: false,
 			},
-			delayer: &fakeDelayer{
+			delayer: &fakeDelayer[any]{
 				availableResponse: true,
 				availableCalled:   make(chan bool)},
 			delayerIdleChannel: make(chan bool),
-			ingressChannel:     make(chan *ScheduledMessage),
+			ingressChannel:     make(chan *ScheduledMessage[any]),
 			dispatchChannel:    make(chan interface{}),
 			stopProcess:        make(chan bool)}, args{
 			ctx: func() context.Context {
@@ -547,7 +547,7 @@ func TestDispatcher_Shutdown(t *testing.T) {
 				return ctx
 			}(),
 			drainImmediately: true}, false,
-			func(d *Dispatcher) {
+			func(d *Dispatcher[any]) {
 				if d.state != shutdownAndDrain {
 					t.Errorf("Shutdown() unexpect state = %v, want Shutdown", d.state)
 				}
@@ -555,15 +555,15 @@ func TestDispatcher_Shutdown(t *testing.T) {
 			}},
 		{"shutdownNotWithinDeadline", fields{
 			state: processing,
-			pq: priorityQueue{
-				items:         make([]*item, 0),
+			pq: priorityQueue[any]{
+				items:         make([]*item[any], 0),
 				maintainOrder: false,
 			},
-			delayer: &fakeDelayer{
+			delayer: &fakeDelayer[any]{
 				availableResponse: true,
 				availableCalled:   make(chan bool)},
 			delayerIdleChannel: make(chan bool),
-			ingressChannel:     make(chan *ScheduledMessage),
+			ingressChannel:     make(chan *ScheduledMessage[any]),
 			dispatchChannel:    make(chan interface{}),
 			stopProcess:        make(chan bool)}, args{
 			ctx: func() context.Context {
@@ -571,7 +571,7 @@ func TestDispatcher_Shutdown(t *testing.T) {
 				return ctx
 			}(),
 			drainImmediately: false}, true,
-			func(d *Dispatcher) {
+			func(d *Dispatcher[any]) {
 				if d.state != shutdown {
 					t.Errorf("Shutdown() unexpect state = %v, want Shutdown", d.state)
 				}
@@ -579,7 +579,7 @@ func TestDispatcher_Shutdown(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			d := &Dispatcher{
+			d := &Dispatcher[any]{
 				state:              tt.fields.state,
 				pq:                 tt.fields.pq,
 				maxMessages:        tt.fields.maxMessages,
@@ -592,12 +592,12 @@ func TestDispatcher_Shutdown(t *testing.T) {
 				stopProcess:        tt.fields.stopProcess,
 				mutex:              &sync.Mutex{},
 			}
-			go func(fd *fakeDelayer) {
+			go func(fd *fakeDelayer[any]) {
 				if _, ok := <-fd.availableCalled; !ok {
 					t.Error("process() expected close of delayer.available()")
 				}
 				fd.availableCalled = nil
-			}(tt.fields.delayer.(*fakeDelayer))
+			}(tt.fields.delayer.(*fakeDelayer[any]))
 			if err := d.Shutdown(tt.args.ctx, tt.args.drainImmediately); (err != nil) != tt.wantErr {
 				t.Errorf("Shutdown() error = %v, wantErr %v", err, tt.wantErr)
 			}
@@ -615,7 +615,7 @@ func TestDispatcher_Shutdown(t *testing.T) {
 func TestDispatcher_integration_inOrderIngress(t *testing.T) {
 	skipCI(t)
 
-	dispatcher, _ := NewDispatcher(&DispatcherConfig{
+	dispatcher, _ := NewDispatcher[int](&DispatcherConfig{
 		IngressChannelSize:  3,
 		DispatchChannelSize: 3,
 		MaxMessages:         3,
@@ -634,9 +634,8 @@ func TestDispatcher_integration_inOrderIngress(t *testing.T) {
 				return
 			case msg, ok := <-dispatch:
 				if ok {
-					msgValue := msg.(int)
-					if msgValue != i {
-						t.Errorf("integration; unexpected value from message = %d, want = %d", msgValue, i)
+					if msg != i {
+						t.Errorf("integration; unexpected value from message = %d, want = %d", msg, i)
 						t.FailNow()
 					}
 					i++
@@ -645,17 +644,17 @@ func TestDispatcher_integration_inOrderIngress(t *testing.T) {
 		}
 	}()
 
-	ingest <- &ScheduledMessage{
+	ingest <- &ScheduledMessage[int]{
 		At:      time.Now().Add(time.Duration(0) * time.Second),
 		Message: 0,
 	}
 
-	ingest <- &ScheduledMessage{
+	ingest <- &ScheduledMessage[int]{
 		At:      time.Now().Add(time.Duration(3) * time.Second),
 		Message: 1,
 	}
 
-	ingest <- &ScheduledMessage{
+	ingest <- &ScheduledMessage[int]{
 		At:      time.Now().Add(time.Duration(5) * time.Second),
 		Message: 2,
 	}
@@ -675,7 +674,7 @@ func TestDispatcher_integration_inOrderIngress(t *testing.T) {
 func TestDispatcher_integration_outOfOrderIngress(t *testing.T) {
 	skipCI(t)
 
-	dispatcher, _ := NewDispatcher(&DispatcherConfig{
+	dispatcher, _ := NewDispatcher[int](&DispatcherConfig{
 		IngressChannelSize:  3,
 		DispatchChannelSize: 3,
 		MaxMessages:         3,
@@ -694,9 +693,8 @@ func TestDispatcher_integration_outOfOrderIngress(t *testing.T) {
 				return
 			case msg, ok := <-dispatch:
 				if ok {
-					msgValue := msg.(int)
-					if msgValue != i {
-						t.Errorf("integration; unexpected value from message = %d, want = %d", msgValue, i)
+					if msg != i {
+						t.Errorf("integration; unexpected value from message = %d, want = %d", msg, i)
 						t.FailNow()
 					}
 					i++
@@ -705,17 +703,17 @@ func TestDispatcher_integration_outOfOrderIngress(t *testing.T) {
 		}
 	}()
 
-	ingest <- &ScheduledMessage{
+	ingest <- &ScheduledMessage[int]{
 		At:      time.Now().Add(time.Duration(2) * time.Second),
 		Message: 1,
 	}
 
-	ingest <- &ScheduledMessage{
+	ingest <- &ScheduledMessage[int]{
 		At:      time.Now().Add(time.Duration(0) * time.Second),
 		Message: 0,
 	}
 
-	ingest <- &ScheduledMessage{
+	ingest <- &ScheduledMessage[int]{
 		At:      time.Now().Add(time.Duration(4) * time.Second),
 		Message: 2,
 	}
@@ -735,7 +733,7 @@ func TestDispatcher_integration_outOfOrderIngress(t *testing.T) {
 func TestDispatcher_integration_sameTimeSameOrder(t *testing.T) {
 	skipCI(t)
 
-	dispatcher, _ := NewDispatcher(&DispatcherConfig{
+	dispatcher, _ := NewDispatcher[int](&DispatcherConfig{
 		IngressChannelSize:  100,
 		DispatchChannelSize: 100,
 		MaxMessages:         100,
@@ -754,9 +752,8 @@ func TestDispatcher_integration_sameTimeSameOrder(t *testing.T) {
 				return
 			case msg, ok := <-dispatch:
 				if ok {
-					msgValue := msg.(int)
-					if msgValue != i {
-						t.Errorf("integration; unexpected value from message = %d, want = %d", msgValue, i)
+					if msg != i {
+						t.Errorf("integration; unexpected value from message = %d, want = %d", msg, i)
 						t.FailNow()
 					}
 					i++
@@ -767,7 +764,7 @@ func TestDispatcher_integration_sameTimeSameOrder(t *testing.T) {
 
 	sameTime := time.Now()
 	for i := 0; i < 10; i++ {
-		ingest <- &ScheduledMessage{
+		ingest <- &ScheduledMessage[int]{
 			At:      sameTime,
 			Message: i,
 		}
@@ -786,7 +783,7 @@ func TestDispatcher_integration_sameTimeSameOrder(t *testing.T) {
 }
 
 func RunDispatchLoadTest(b *testing.B, totalMessages int, sameTime bool, config DispatcherConfig) {
-	dispatcher, _ := NewDispatcher(&config)
+	dispatcher, _ := NewDispatcher[int](&config)
 	ingest := dispatcher.IngressChannel()
 	dispatch := dispatcher.DispatchChannel()
 	go dispatcher.Start()
@@ -802,7 +799,7 @@ func RunDispatchLoadTest(b *testing.B, totalMessages int, sameTime bool, config 
 			if !sameTime {
 				at = time.Now()
 			}
-			ingest <- &ScheduledMessage{
+			ingest <- &ScheduledMessage[int]{
 				At:      at,
 				Message: i,
 			}

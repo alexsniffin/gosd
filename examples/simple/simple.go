@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/alexsniffin/gosd"
+	"github.com/alexsniffin/gosd/v2"
 )
 
 func main() {
 	// create instance of dispatcher
-	dispatcher, err := gosd.NewDispatcher(&gosd.DispatcherConfig{
+	dispatcher, err := gosd.NewDispatcher[string](&gosd.DispatcherConfig{
 		IngressChannelSize:  100,
 		DispatchChannelSize: 100,
 		MaxMessages:         100,
@@ -24,7 +24,7 @@ func main() {
 	go dispatcher.Start()
 
 	// schedule a message
-	dispatcher.IngressChannel() <- &gosd.ScheduledMessage{
+	dispatcher.IngressChannel() <- &gosd.ScheduledMessage[string]{
 		At:      time.Now().Add(1 * time.Second),
 		Message: "Hello World in 1 second!",
 	}
@@ -32,9 +32,7 @@ func main() {
 	// wait for the message
 	msg := <-dispatcher.DispatchChannel()
 
-	// type assert
-	msgStr := msg.(string)
-	fmt.Println(msgStr)
+	fmt.Println(msg)
 	// Hello World in 1 second!
 
 	// shutdown without deadline

@@ -4,9 +4,9 @@ import (
 	"time"
 )
 
-type delayer interface {
+type delayer[T any] interface {
 	stop(drain bool)
-	wait(msg *ScheduledMessage)
+	wait(msg *ScheduledMessage[T])
 	available() bool
 }
 
@@ -17,16 +17,16 @@ const (
 	waiting
 )
 
-type delay struct {
+type delay[T any] struct {
 	state delayState
 
 	idleChannel   chan<- bool
-	egressChannel chan<- interface{}
+	egressChannel chan<- T
 	cancelChannel chan bool
 }
 
-func newDelay(egressChannel chan<- interface{}, idleChannel chan<- bool) *delay {
-	return &delay{
+func newDelay[T any](egressChannel chan<- T, idleChannel chan<- bool) *delay[T] {
+	return &delay[T]{
 		idleChannel:   idleChannel,
 		egressChannel: egressChannel,
 		cancelChannel: make(chan bool, 1),
@@ -34,14 +34,14 @@ func newDelay(egressChannel chan<- interface{}, idleChannel chan<- bool) *delay 
 }
 
 // stop sends a cancel signal to the current timer process.
-func (d *delay) stop(drain bool) {
+func (d *delay[T]) stop(drain bool) {
 	if d.state == waiting {
 		d.cancelChannel <- drain
 	}
 }
 
 // wait will create a timer based on the time from `msg.At` and dispatch the message to the egress channel asynchronously.
-func (d *delay) wait(msg *ScheduledMessage) {
+func (d *delay[T]) wait(msg *ScheduledMessage[T]) {
 	d.state = waiting
 	curTimer := time.NewTimer(time.Until(msg.At))
 
@@ -69,6 +69,6 @@ func (d *delay) wait(msg *ScheduledMessage) {
 }
 
 // available returns whether the delay is able to accept a new message to wait on.
-func (d *delay) available() bool {
+func (d *delay[T]) available() bool {
 	return d.state == idle
 }

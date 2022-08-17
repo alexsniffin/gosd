@@ -21,7 +21,7 @@ func Test_delay_stop(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			d := &delay{
+			d := &delay[any]{
 				state:         tt.fields.state,
 				egressChannel: tt.fields.egressChannel,
 				cancelChannel: tt.fields.cancelChannel,
@@ -42,17 +42,17 @@ func Test_delay_wait(t *testing.T) {
 		cancelChannel chan bool
 	}
 	type args struct {
-		msg *ScheduledMessage
+		msg *ScheduledMessage[any]
 	}
 	tests := []struct {
 		name            string
 		fields          fields
 		args            args
-		customAssertion func(fields, *delay)
+		customAssertion func(fields, *delay[any])
 	}{
 		{"egressMessage", fields{
 			egressChannel: make(chan interface{}),
-			idleChannel:   make(chan bool)}, args{msg: &ScheduledMessage{At: time.Now()}}, func(f fields, d *delay) {
+			idleChannel:   make(chan bool)}, args{msg: &ScheduledMessage[any]{At: time.Now()}}, func(f fields, d *delay[any]) {
 			if d.state != waiting {
 				t.Errorf("wait() unexpected state = %+v, want Waiting", d.state)
 			}
@@ -68,7 +68,7 @@ func Test_delay_wait(t *testing.T) {
 		}},
 		{"cancelMessage", fields{
 			cancelChannel: make(chan bool, 1),
-			idleChannel:   make(chan bool)}, args{msg: &ScheduledMessage{At: time.Now().Add(10 + time.Second)}}, func(f fields, d *delay) {
+			idleChannel:   make(chan bool)}, args{msg: &ScheduledMessage[any]{At: time.Now().Add(10 + time.Second)}}, func(f fields, d *delay[any]) {
 			if d.state != waiting {
 				t.Errorf("wait() unexpected state = %+v, want Waiting", d.state)
 			}
@@ -83,7 +83,7 @@ func Test_delay_wait(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			d := &delay{
+			d := &delay[any]{
 				state:         tt.fields.state,
 				idleChannel:   tt.fields.idleChannel,
 				egressChannel: tt.fields.egressChannel,
@@ -111,7 +111,7 @@ func Test_delay_available(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			d := &delay{
+			d := &delay[any]{
 				state:         tt.fields.state,
 				egressChannel: tt.fields.egressChannel,
 				cancelChannel: tt.fields.cancel,

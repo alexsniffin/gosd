@@ -8,9 +8,9 @@ import (
 func TestPriorityQueue_Len(t *testing.T) {
 	t.Parallel()
 
-	pq := priorityQueue{
-		items: []*item{{
-			Message: &ScheduledMessage{},
+	pq := priorityQueue[any]{
+		items: []*item[any]{{
+			Message: &ScheduledMessage[any]{},
 			Index:   0,
 		}},
 		maintainOrder: false,
@@ -24,16 +24,16 @@ func TestPriorityQueue_Len(t *testing.T) {
 }
 
 func TestPriorityQueue_Less(t *testing.T) {
-	pq := priorityQueue{
-		items: []*item{
+	pq := priorityQueue[any]{
+		items: []*item[any]{
 			{
-				Message: &ScheduledMessage{
+				Message: &ScheduledMessage[any]{
 					At: time.Now(),
 				},
 				Index: 0,
 			},
 			{
-				Message: &ScheduledMessage{
+				Message: &ScheduledMessage[any]{
 					At: time.Now().Add(1 * time.Second),
 				},
 				Index: 1,
@@ -52,16 +52,16 @@ func TestPriorityQueue_Swap(t *testing.T) {
 	t.Parallel()
 
 	t.Run("notEqual", func(t *testing.T) {
-		pq := priorityQueue{
-			items: []*item{
+		pq := priorityQueue[any]{
+			items: []*item[any]{
 				{
-					Message: &ScheduledMessage{
+					Message: &ScheduledMessage[any]{
 						At: time.Now(),
 					},
 					Index: 0,
 				},
 				{
-					Message: &ScheduledMessage{
+					Message: &ScheduledMessage[any]{
 						At: time.Now().Add(1 * time.Second),
 					},
 					Index: 1,
@@ -80,16 +80,16 @@ func TestPriorityQueue_Swap(t *testing.T) {
 
 	t.Run("equal", func(t *testing.T) {
 		at := time.Now()
-		pq := priorityQueue{
-			items: []*item{
+		pq := priorityQueue[any]{
+			items: []*item[any]{
 				{
-					Message: &ScheduledMessage{
+					Message: &ScheduledMessage[any]{
 						At: at,
 					},
 					Index: 0,
 				},
 				{
-					Message: &ScheduledMessage{
+					Message: &ScheduledMessage[any]{
 						At: at,
 					},
 					Index: 1,
@@ -110,11 +110,11 @@ func TestPriorityQueue_Swap(t *testing.T) {
 func TestPriorityQueue_Push(t *testing.T) {
 	t.Parallel()
 
-	pq := priorityQueue{
+	pq := priorityQueue[any]{
 		maintainOrder: false,
 	}
 
-	pq.Push(&ScheduledMessage{})
+	pq.Push(&ScheduledMessage[any]{})
 
 	if len(pq.items) != 1 {
 		t.Errorf("Push() unexpect length = %d, want 1", len(pq.items))
@@ -125,17 +125,17 @@ func TestPriorityQueue_Pop(t *testing.T) {
 	t.Parallel()
 
 	t.Run("unequal", func(t *testing.T) {
-		pq := priorityQueue{
-			items: []*item{
+		pq := priorityQueue[any]{
+			items: []*item[any]{
 				{
-					Message: &ScheduledMessage{
+					Message: &ScheduledMessage[any]{
 						At:      time.Now(),
 						Message: 0,
 					},
 					Index: 0,
 				},
 				{
-					Message: &ScheduledMessage{
+					Message: &ScheduledMessage[any]{
 						At:      time.Now().Add(1 * time.Second),
 						Message: 1,
 					},
@@ -146,7 +146,7 @@ func TestPriorityQueue_Pop(t *testing.T) {
 
 		result := pq.Pop()
 
-		message, ok := result.(*ScheduledMessage)
+		message, ok := result.(*ScheduledMessage[any])
 		if !ok {
 			t.Error("Pop() unexpected type")
 			t.FailNow()
@@ -159,24 +159,24 @@ func TestPriorityQueue_Pop(t *testing.T) {
 
 	t.Run("equalMaintainOrder", func(t *testing.T) {
 		at := time.Now()
-		pq := priorityQueue{
-			items: []*item{
+		pq := priorityQueue[any]{
+			items: []*item[any]{
 				{
-					Message: &ScheduledMessage{
+					Message: &ScheduledMessage[any]{
 						At:      at,
 						Message: 0,
 					},
 					Index: 0,
 				},
 				{
-					Message: &ScheduledMessage{
+					Message: &ScheduledMessage[any]{
 						At:      at,
 						Message: 1,
 					},
 					Index: 1,
 				},
 				{
-					Message: &ScheduledMessage{
+					Message: &ScheduledMessage[any]{
 						At:      at,
 						Message: 2,
 					},
@@ -188,7 +188,7 @@ func TestPriorityQueue_Pop(t *testing.T) {
 
 		result := pq.Pop()
 
-		message, ok := result.(*ScheduledMessage)
+		message, ok := result.(*ScheduledMessage[any])
 		if !ok {
 			t.Error("Pop() unexpected type")
 			t.FailNow()
