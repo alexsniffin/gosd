@@ -14,7 +14,7 @@ COPY . $GOPATH/src/github.com/alexsniffin/gosd.git/
 WORKDIR $GOPATH/src/github.com/alexsniffin/gosd.git/
 
 # Pull dependencies
-RUN curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.31.0
+RUN curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin
 
 # Run quality check
 RUN golangci-lint run --timeout 10m0s -v --build-tags mus -c .golangci.yml \
