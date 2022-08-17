@@ -1,24 +1,24 @@
 package gosd
 
-type item struct {
-	Message *ScheduledMessage
+type item[T any] struct {
+	Message *ScheduledMessage[T]
 	Index   int
 }
 
-type priorityQueue struct {
-	items         []*item
+type priorityQueue[T any] struct {
+	items         []*item[T]
 	maintainOrder bool
 }
 
-func (pq priorityQueue) Len() int {
+func (pq priorityQueue[T]) Len() int {
 	return len(pq.items)
 }
 
-func (pq priorityQueue) Less(i, j int) bool {
+func (pq priorityQueue[T]) Less(i, j int) bool {
 	return pq.items[i].Message.At.Before(pq.items[j].Message.At)
 }
 
-func (pq priorityQueue) Swap(i, j int) {
+func (pq priorityQueue[T]) Swap(i, j int) {
 	// if items have the same time, don't swap
 	if pq.items[i].Message.At.Equal(pq.items[j].Message.At) {
 		return
@@ -28,16 +28,16 @@ func (pq priorityQueue) Swap(i, j int) {
 	pq.items[j].Index = j
 }
 
-func (pq *priorityQueue) Push(x interface{}) {
+func (pq *priorityQueue[T]) Push(x any) {
 	n := len(pq.items)
-	item := item{
-		Message: x.(*ScheduledMessage),
+	item := item[T]{
+		Message: x.(*ScheduledMessage[T]),
 		Index:   n,
 	}
 	pq.items = append(pq.items, &item)
 }
 
-func (pq *priorityQueue) Pop() interface{} {
+func (pq *priorityQueue[T]) Pop() any {
 	old := *pq
 	n := len(old.items)
 	itm := old.items[n-1]
@@ -46,7 +46,7 @@ func (pq *priorityQueue) Pop() interface{} {
 	// worst-case complexity to O(nlogn), i.e. all items have the same dispatch time
 	if pq.maintainOrder {
 		i := 2
-		var nextItem *item
+		var nextItem *item[T]
 		if n >= i {
 			if old.items[n-i].Message.At.Equal(itm.Message.At) {
 				nextItem = old.items[n-i]
@@ -59,7 +59,7 @@ func (pq *priorityQueue) Pop() interface{} {
 		if nextItem != nil {
 			old.items[n-(i-1)] = nil
 			nextItem.Index = -1
-			var newPq []*item
+			var newPq []*item[T]
 			if n-(i-1) == 0 {
 				newPq = old.items[1:n]
 			} else {
