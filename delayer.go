@@ -18,7 +18,7 @@ const (
 )
 
 type delay[T any] struct {
-	state delayState
+	state delayState // nolint:unused
 
 	idleChannel   chan<- bool
 	egressChannel chan<- T
@@ -34,6 +34,7 @@ func newDelay[T any](egressChannel chan<- T, idleChannel chan<- bool) *delay[T] 
 }
 
 // stop sends a cancel signal to the current timer process.
+// nolint:unused
 func (d *delay[T]) stop(drain bool) {
 	if d.state == waiting {
 		d.cancelChannel <- drain
@@ -41,6 +42,7 @@ func (d *delay[T]) stop(drain bool) {
 }
 
 // wait will create a timer based on the time from `msg.At` and dispatch the message to the egress channel asynchronously.
+// nolint:unused
 func (d *delay[T]) wait(msg *ScheduledMessage[T]) {
 	d.state = waiting
 	curTimer := time.NewTimer(time.Until(msg.At))
@@ -69,6 +71,7 @@ func (d *delay[T]) wait(msg *ScheduledMessage[T]) {
 }
 
 // available returns whether the delay is able to accept a new message to wait on.
+// nolint
 func (d *delay[T]) available() bool {
 	return d.state == idle
 }
